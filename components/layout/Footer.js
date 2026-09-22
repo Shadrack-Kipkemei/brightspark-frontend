@@ -11,7 +11,7 @@ export default function Footer() {
           {/* Company */}
           <div>
             <Image
-              src="/logo/brightspark-logo.png"
+              src="/logo/Brightspark-logo.png"
               alt="BrightSpark Electricals & Electronics"
               width={180}
               height={60}
@@ -119,21 +119,21 @@ export default function Footer() {
 
               <p>
                 <span className="font-semibold text-white">
-                  Phone:
+                  Phone: 0714256265
                 </span>{" "}
                 Contact BrightSpark
               </p>
 
               <p>
                 <span className="font-semibold text-white">
-                  WhatsApp:
+                  WhatsApp: 0714256265
                 </span>{" "}
                 Available for customer inquiries
               </p>
 
               <p>
                 <span className="font-semibold text-white">
-                  Email:
+                  Email: danstantoel2016@gmail.com
                 </span>{" "}
                 BrightSpark Support
               </p>

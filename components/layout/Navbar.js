@@ -22,7 +22,7 @@ export default function Navbar() {
           className="flex items-center"
         >
           <Image
-            src="/logo/brightspark-logo.png"
+            src="/logo/Brightspark-logo.png"
             alt="BrightSpark Electricals & Electronics"
             width={190}
             height={60}
