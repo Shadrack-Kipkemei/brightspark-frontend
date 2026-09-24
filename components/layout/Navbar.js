@@ -4,10 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useCart } from "@/components/cart/CartContext";
 
 export default function Navbar() {
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { cartCount } = useCart();
 
   const closeMenu = () => {
     setIsMenuOpen(false);
@@ -119,7 +121,7 @@ export default function Navbar() {
 
             {/* Cart Count */}
             <span className="absolute -right-1.5 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-[#FE7401] px-1.5 text-xs font-bold text-white">
-              0
+              {cartCount}
             </span>
           </Link>
 
