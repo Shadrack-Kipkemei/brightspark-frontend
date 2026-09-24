@@ -2,6 +2,7 @@ import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { CartProvider } from "@/components/cart/CartContext";
+import { AuthProvider } from "@/components/auth/AuthContext";
 
 
 export const metadata = {
@@ -15,15 +16,17 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className="flex min-h-screen flex-col">
-        <CartProvider>
-          <Navbar />
+        <AuthProvider>
+          <CartProvider>
+            <Navbar />
 
-          <main className="flex-1">
-            {children}
-          </main>
+            <main className="flex-1">
+              {children}
+            </main>
 
-          <Footer />
-        </CartProvider>
+            <Footer />
+          </CartProvider>
+        </AuthProvider>
 
       </body>
     </html>
