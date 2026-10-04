@@ -102,7 +102,7 @@ export default function EmployeeDashboard() {
           <DashboardCard
             title="Products & Stock"
             description="View available products and stock"
-            href="/employee/products"
+            href="/employee/inventory"
             icon="📦"
           />
 
@@ -123,7 +123,7 @@ export default function EmployeeDashboard() {
           <DashboardCard
             title="Add Stock"
             description="Record stock received"
-            href="/employee/stock"
+            href="/employee/inventory"
             icon="➕"
           />
 

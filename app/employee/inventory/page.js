@@ -21,6 +21,7 @@ const INITIAL_PRODUCTS = [
     category: "Phone Accessories",
     unit: "Piece",
     costPrice: 300,
+    sellingPrice: 500,
     lowStockThreshold: 5,
     stock: 12,
   },
@@ -31,6 +32,7 @@ const INITIAL_PRODUCTS = [
     category: "Lighting",
     unit: "Piece",
     costPrice: 220,
+    sellingPrice: 350,
     lowStockThreshold: 5,
     stock: 20,
   },
@@ -41,6 +43,7 @@ const INITIAL_PRODUCTS = [
     category: "Electrical",
     unit: "Metre",
     costPrice: 55,
+    sellingPrice: 80,
     lowStockThreshold: 10,
     stock: 50,
   },
@@ -51,6 +54,7 @@ const INITIAL_PRODUCTS = [
     category: "Lighting",
     unit: "Piece",
     costPrice: 1200,
+    sellingPrice: 1800,
     lowStockThreshold: 5,
     stock: 4,
   },
@@ -61,6 +65,7 @@ const INITIAL_PRODUCTS = [
     category: "Phone Accessories",
     unit: "Piece",
     costPrice: 500,
+    sellingPrice: 800,
     lowStockThreshold: 5,
     stock: 15,
   },
@@ -71,6 +76,7 @@ const INITIAL_PRODUCTS = [
     category: "Electrical",
     unit: "Piece",
     costPrice: 1800,
+    sellingPrice: 2500,
     lowStockThreshold: 3,
     stock: 6,
   },
@@ -87,17 +93,17 @@ function Modal({ title, children, onClose, footer }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex shrink-0 items-center justify-between border-b px-6 py-4">
+        {/* Fixed Header */}
+        <div className="flex shrink-0 items-center justify-between border-b bg-white px-6 py-4">
           <h2
             className="text-xl font-bold"
-            style={{
-              color: BRAND.navy,
-            }}
+            style={{ color: BRAND.navy }}
           >
             {title}
           </h2>
 
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg px-3 py-2 text-xl text-gray-500 hover:bg-gray-100"
           >
@@ -105,10 +111,12 @@ function Modal({ title, children, onClose, footer }) {
           </button>
         </div>
 
+        {/* Scrollable Content */}
         <div className="max-h-[calc(90vh-145px)] overflow-y-auto px-6 py-5">
           {children}
         </div>
 
+        {/* Fixed Footer */}
         {footer && (
           <div className="shrink-0 border-t bg-white px-6 py-4">
             {footer}
@@ -120,57 +128,55 @@ function Modal({ title, children, onClose, footer }) {
 }
 
 export default function EmployeeInventoryPage() {
-  const [products, setProducts] =
-    useState(INITIAL_PRODUCTS);
+  const [products, setProducts] = useState(INITIAL_PRODUCTS);
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
 
-  const [showStockModal, setShowStockModal] =
-    useState(false);
+  const [showStockModal, setShowStockModal] = useState(false);
 
-  const [selectedProduct, setSelectedProduct] =
-    useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
   const [stockForm, setStockForm] = useState({
     quantity: "",
+    unitCost: "",
+    sellingPrice: "",
     reason: "",
   });
 
   const categories = [
     "All",
-    ...new Set(
-      products.map(
-        (product) => product.category
-      )
-    ),
+    ...new Set(products.map((product) => product.category)),
   ];
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
+      const searchValue = search.toLowerCase();
+
       const matchesSearch =
-        product.name
-          .toLowerCase()
-          .includes(search.toLowerCase()) ||
-        product.sku
-          .toLowerCase()
-          .includes(search.toLowerCase());
+        product.name.toLowerCase().includes(searchValue) ||
+        product.sku.toLowerCase().includes(searchValue);
 
       const matchesCategory =
         category === "All" ||
         product.category === category;
 
-      return (
-        matchesSearch &&
-        matchesCategory
-      );
+      return matchesSearch && matchesCategory;
     });
   }, [products, search, category]);
 
   const lowStockProducts = products.filter(
     (product) =>
-      product.stock <=
-      product.lowStockThreshold
+      Number(product.stock) <=
+      Number(product.lowStockThreshold)
+  );
+
+  const totalStockValue = products.reduce(
+    (sum, product) =>
+      sum +
+      Number(product.stock || 0) *
+        Number(product.costPrice || 0),
+    0
   );
 
   function openStockModal(product) {
@@ -178,21 +184,47 @@ export default function EmployeeInventoryPage() {
 
     setStockForm({
       quantity: "",
+      unitCost: product.costPrice.toString(),
+      sellingPrice: product.sellingPrice.toString(),
       reason: "",
     });
 
     setShowStockModal(true);
   }
 
+  function closeStockModal() {
+    setShowStockModal(false);
+    setSelectedProduct(null);
+
+    setStockForm({
+      quantity: "",
+      unitCost: "",
+      sellingPrice: "",
+      reason: "",
+    });
+  }
+
   function addStock() {
-    if (!selectedProduct) return;
+    if (!selectedProduct) {
+      return;
+    }
 
-    const quantity = Number(
-      stockForm.quantity
-    );
+    const quantity = Number(stockForm.quantity);
+    const unitCost = Number(stockForm.unitCost);
+    const sellingPrice = Number(stockForm.sellingPrice);
 
-    if (quantity <= 0) {
-      alert("Enter a valid quantity.");
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      alert("Enter a valid stock quantity.");
+      return;
+    }
+
+    if (!Number.isFinite(unitCost) || unitCost < 0) {
+      alert("Enter a valid unit cost.");
+      return;
+    }
+
+    if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+      alert("Enter a valid selling price.");
       return;
     }
 
@@ -202,25 +234,58 @@ export default function EmployeeInventoryPage() {
     }
 
     setProducts((prev) =>
-      prev.map((product) =>
-        product.id === selectedProduct.id
-          ? {
-              ...product,
-              stock:
-                product.stock + quantity,
-            }
-          : product
-      )
+      prev.map((product) => {
+        if (product.id !== selectedProduct.id) {
+          return product;
+        }
+
+        return {
+          ...product,
+
+          // Add the new quantity
+          stock:
+            Number(product.stock) + quantity,
+
+          // New stock cost
+          costPrice: unitCost,
+
+          // New stock selling price
+          sellingPrice: sellingPrice,
+        };
+      })
     );
 
-    setShowStockModal(false);
+    /*
+      In production this information will be sent
+      to the Flask API and saved as an inventory batch:
+
+      {
+        product_id: selectedProduct.id,
+        branch_id: employee.branch,
+        quantity,
+        unit_cost: unitCost,
+        selling_price: sellingPrice,
+        reason: stockForm.reason,
+        received_by: CURRENT_EMPLOYEE.id
+      }
+    */
+
+    alert(
+      `${quantity} ${selectedProduct.unit} of ${selectedProduct.name} added successfully.`
+    );
+
+    closeStockModal();
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* Page Header */}
       <div className="border-b bg-white">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+
             <div>
               <p
                 className="text-sm font-semibold"
@@ -237,29 +302,39 @@ export default function EmployeeInventoryPage() {
                   color: BRAND.navy,
                 }}
               >
-                Stock
+                Products & Stock
               </h1>
 
               <p className="mt-1 text-gray-500">
-                View and add stock for your branch.
+                View products and manage stock for your branch.
               </p>
             </div>
 
+            {/* Employee Branch */}
             <div className="rounded-xl bg-gray-50 px-5 py-3">
               <p className="text-xs text-gray-500">
                 Your Branch
               </p>
 
-              <p className="font-bold">
+              <p
+                className="font-bold"
+                style={{
+                  color: BRAND.navy,
+                }}
+              >
                 {CURRENT_EMPLOYEE.branch}
               </p>
             </div>
+
           </div>
         </div>
       </div>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+
+        {/* Summary Cards */}
         <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+
           <SummaryCard
             title="Products"
             value={products.length}
@@ -272,20 +347,15 @@ export default function EmployeeInventoryPage() {
 
           <SummaryCard
             title="Stock Value"
-            value={money(
-              products.reduce(
-                (sum, product) =>
-                  sum +
-                  product.stock *
-                    product.costPrice,
-                0
-              )
-            )}
+            value={money(totalStockValue)}
           />
+
         </div>
 
+        {/* Low Stock Alert */}
         {lowStockProducts.length > 0 && (
           <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-5">
+
             <h2 className="font-bold text-red-700">
               Low Stock Alert
             </h2>
@@ -295,36 +365,42 @@ export default function EmployeeInventoryPage() {
             </p>
 
             <div className="mt-3 space-y-2">
-              {lowStockProducts.map(
-                (product) => (
-                  <div
-                    key={product.id}
-                    className="flex justify-between rounded-lg bg-white p-3"
-                  >
-                    <span className="font-semibold">
-                      {product.name}
-                    </span>
 
-                    <span className="font-bold text-red-600">
-                      {product.stock}{" "}
-                      {product.unit}
-                    </span>
-                  </div>
-                )
-              )}
+              {lowStockProducts.map((product) => (
+                <div
+                  key={product.id}
+                  className="flex flex-col justify-between gap-2 rounded-lg bg-white p-3 sm:flex-row sm:items-center"
+                >
+
+                  <span className="font-semibold">
+                    {product.name}
+                  </span>
+
+                  <span className="font-bold text-red-600">
+                    {product.stock} {product.unit}
+                  </span>
+
+                </div>
+              ))}
+
             </div>
           </div>
         )}
 
+        {/* Products Table */}
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
+
+          {/* Search and Filter */}
           <div className="flex flex-col gap-4 border-b p-5 md:flex-row">
+
             <input
+              type="text"
               value={search}
               onChange={(e) =>
                 setSearch(e.target.value)
               }
               placeholder="Search product or SKU..."
-              className="flex-1 rounded-xl border px-4 py-3"
+              className="flex-1 rounded-xl border px-4 py-3 outline-none focus:border-[#02337D]"
             />
 
             <select
@@ -332,20 +408,26 @@ export default function EmployeeInventoryPage() {
               onChange={(e) =>
                 setCategory(e.target.value)
               }
-              className="rounded-xl border px-4 py-3"
+              className="rounded-xl border px-4 py-3 outline-none focus:border-[#02337D]"
             >
               {categories.map((item) => (
-                <option key={item}>
+                <option key={item} value={item}>
                   {item}
                 </option>
               ))}
             </select>
+
           </div>
 
+          {/* Table */}
           <div className="overflow-x-auto">
-            <table className="min-w-full">
+
+            <table className="min-w-[1100px] w-full">
+
               <thead className="bg-gray-50">
+
                 <tr>
+
                   <th className="px-5 py-4 text-left">
                     Product
                   </th>
@@ -367,27 +449,52 @@ export default function EmployeeInventoryPage() {
                   </th>
 
                   <th className="px-5 py-4 text-left">
+                    Unit Cost
+                  </th>
+
+                  <th className="px-5 py-4 text-left">
+                    Selling Price
+                  </th>
+
+                  <th className="px-5 py-4 text-left">
                     Status
                   </th>
 
                   <th className="px-5 py-4 text-right">
                     Action
                   </th>
+
                 </tr>
+
               </thead>
 
               <tbody>
-                {filteredProducts.map(
-                  (product) => {
+
+                {filteredProducts.length === 0 ? (
+
+                  <tr>
+                    <td
+                      colSpan="9"
+                      className="px-5 py-10 text-center text-gray-500"
+                    >
+                      No products found.
+                    </td>
+                  </tr>
+
+                ) : (
+
+                  filteredProducts.map((product) => {
+
                     const lowStock =
-                      product.stock <=
-                      product.lowStockThreshold;
+                      Number(product.stock) <=
+                      Number(product.lowStockThreshold);
 
                     return (
                       <tr
                         key={product.id}
-                        className="border-t"
+                        className="border-t hover:bg-gray-50"
                       >
+
                         <td className="px-5 py-4 font-semibold">
                           {product.name}
                         </td>
@@ -409,23 +516,37 @@ export default function EmployeeInventoryPage() {
                         </td>
 
                         <td className="px-5 py-4">
+                          {money(product.costPrice)}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {money(product.sellingPrice)}
+                        </td>
+
+                        <td className="px-5 py-4">
+
                           {lowStock ? (
+
                             <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
                               LOW STOCK
                             </span>
+
                           ) : (
+
                             <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
                               IN STOCK
                             </span>
+
                           )}
+
                         </td>
 
                         <td className="px-5 py-4 text-right">
+
                           <button
+                            type="button"
                             onClick={() =>
-                              openStockModal(
-                                product
-                              )
+                              openStockModal(product)
                             }
                             className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
                             style={{
@@ -435,95 +556,299 @@ export default function EmployeeInventoryPage() {
                           >
                             Add Stock
                           </button>
+
                         </td>
+
                       </tr>
                     );
-                  }
+                  })
+
                 )}
+
               </tbody>
+
             </table>
+
           </div>
+
         </section>
+
       </main>
 
-      {showStockModal &&
-        selectedProduct && (
-          <Modal
-            title={`Add Stock — ${selectedProduct.name}`}
-            onClose={() =>
-              setShowStockModal(false)
-            }
-            footer={
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() =>
-                    setShowStockModal(false)
-                  }
-                  className="rounded-xl border px-5 py-3"
-                >
-                  Cancel
-                </button>
+      {/* Add Stock Modal */}
+      {showStockModal && selectedProduct && (
 
-                <button
-                  onClick={addStock}
-                  className="rounded-xl px-5 py-3 font-semibold text-white"
-                  style={{
-                    backgroundColor:
-                      BRAND.orange,
-                  }}
-                >
-                  Add Stock
-                </button>
-              </div>
-            }
-          >
-            <div className="space-y-5">
-              <div className="rounded-xl bg-gray-50 p-4">
-                <p className="text-sm text-gray-500">
-                  Product
-                </p>
+        <Modal
+          title={`Add Stock — ${selectedProduct.name}`}
+          onClose={closeStockModal}
+          footer={
 
-                <p className="font-bold">
-                  {selectedProduct.name}
-                </p>
+            <div className="flex justify-end gap-3">
 
-                <p className="mt-2 text-sm text-gray-500">
-                  Current Stock
-                </p>
+              <button
+                type="button"
+                onClick={closeStockModal}
+                className="rounded-xl border px-5 py-3"
+              >
+                Cancel
+              </button>
 
-                <p className="font-bold">
-                  {selectedProduct.stock}{" "}
-                  {selectedProduct.unit}
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={addStock}
+                className="rounded-xl px-5 py-3 font-semibold text-white"
+                style={{
+                  backgroundColor:
+                    BRAND.orange,
+                }}
+              >
+                Add Stock
+              </button>
 
-              <Input
-                label={`Quantity (${selectedProduct.unit})`}
-                type="number"
-                step="0.001"
-                value={stockForm.quantity}
-                onChange={(value) =>
-                  setStockForm((prev) => ({
-                    ...prev,
-                    quantity: value,
-                  }))
-                }
-              />
-
-              <Input
-                label="Reason"
-                value={stockForm.reason}
-                onChange={(value) =>
-                  setStockForm((prev) => ({
-                    ...prev,
-                    reason: value,
-                  }))
-                }
-                placeholder="e.g. Supplier delivery"
-              />
             </div>
-          </Modal>
-        )}
+
+          }
+        >
+
+          <div className="space-y-5">
+
+            {/* Product Information */}
+            <div className="rounded-xl bg-gray-50 p-4">
+
+              <p className="text-sm text-gray-500">
+                Product
+              </p>
+
+              <p
+                className="font-bold"
+                style={{
+                  color: BRAND.navy,
+                }}
+              >
+                {selectedProduct.name}
+              </p>
+
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+
+                <div>
+                  <p className="text-xs text-gray-500">
+                    SKU
+                  </p>
+
+                  <p className="font-semibold">
+                    {selectedProduct.sku}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs text-gray-500">
+                    Unit
+                  </p>
+
+                  <p className="font-semibold">
+                    {selectedProduct.unit}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs text-gray-500">
+                    Current Stock
+                  </p>
+
+                  <p className="font-semibold">
+                    {selectedProduct.stock}{" "}
+                    {selectedProduct.unit}
+                  </p>
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Current Prices */}
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+
+              <h3
+                className="font-bold"
+                style={{
+                  color: BRAND.navy,
+                }}
+              >
+                Current Prices
+              </h3>
+
+              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+                <div>
+
+                  <p className="text-sm text-gray-500">
+                    Current Unit Cost
+                  </p>
+
+                  <p className="text-lg font-bold">
+                    {money(
+                      selectedProduct.costPrice
+                    )}
+                  </p>
+
+                </div>
+
+                <div>
+
+                  <p className="text-sm text-gray-500">
+                    Current Selling Price
+                  </p>
+
+                  <p className="text-lg font-bold">
+                    {money(
+                      selectedProduct.sellingPrice
+                    )}
+                  </p>
+
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Quantity */}
+            <Input
+              label={`Quantity (${selectedProduct.unit})`}
+              type="number"
+              step="0.001"
+              min="0"
+              value={stockForm.quantity}
+              onChange={(value) =>
+                setStockForm((prev) => ({
+                  ...prev,
+                  quantity: value,
+                }))
+              }
+              placeholder={`Enter quantity in ${selectedProduct.unit.toLowerCase()}`}
+            />
+
+            {/* Unit Cost */}
+            <Input
+              label={`Unit Cost (${selectedProduct.unit})`}
+              type="number"
+              step="0.01"
+              min="0"
+              value={stockForm.unitCost}
+              onChange={(value) =>
+                setStockForm((prev) => ({
+                  ...prev,
+                  unitCost: value,
+                }))
+              }
+              placeholder="Enter purchase cost per unit"
+            />
+
+            <p className="-mt-3 text-xs text-gray-500">
+              Enter the actual cost you paid for this new stock.
+              This can be different from the previous unit cost.
+            </p>
+
+            {/* Selling Price */}
+            <Input
+              label={`Selling Price (${selectedProduct.unit})`}
+              type="number"
+              step="0.01"
+              min="0"
+              value={stockForm.sellingPrice}
+              onChange={(value) =>
+                setStockForm((prev) => ({
+                  ...prev,
+                  sellingPrice: value,
+                }))
+              }
+              placeholder="Enter intended selling price per unit"
+            />
+
+            <p className="-mt-3 text-xs text-gray-500">
+              This is the current/default selling price for the
+              new stock. At the point of sale, the employee can
+              still enter the actual negotiated selling price.
+            </p>
+
+            {/* Reason */}
+            <Input
+              label="Reason"
+              value={stockForm.reason}
+              onChange={(value) =>
+                setStockForm((prev) => ({
+                  ...prev,
+                  reason: value,
+                }))
+              }
+              placeholder="e.g. Supplier delivery"
+            />
+
+            {/* Preview */}
+            {Number(stockForm.quantity) > 0 &&
+              Number(stockForm.unitCost) >= 0 && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+
+                  <h3
+                    className="font-bold"
+                    style={{
+                      color: BRAND.navy,
+                    }}
+                  >
+                    Stock Receipt Summary
+                  </h3>
+
+                  <div className="mt-3 space-y-2 text-sm">
+
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">
+                        Quantity
+                      </span>
+
+                      <span className="font-semibold">
+                        {stockForm.quantity}{" "}
+                        {selectedProduct.unit}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">
+                        Unit Cost
+                      </span>
+
+                      <span className="font-semibold">
+                        {money(stockForm.unitCost)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between border-t pt-2">
+                      <span className="font-semibold">
+                        Total Purchase Cost
+                      </span>
+
+                      <span
+                        className="font-bold"
+                        style={{
+                          color: BRAND.navy,
+                        }}
+                      >
+                        {money(
+                          Number(stockForm.quantity) *
+                            Number(stockForm.unitCost)
+                        )}
+                      </span>
+                    </div>
+
+                  </div>
+
+                </div>
+              )}
+
+          </div>
+
+        </Modal>
+
+      )}
+
     </div>
   );
 }
@@ -531,6 +856,7 @@ export default function EmployeeInventoryPage() {
 function SummaryCard({ title, value }) {
   return (
     <div className="rounded-2xl bg-white p-5 shadow-sm">
+
       <p className="text-sm text-gray-500">
         {title}
       </p>
@@ -538,6 +864,7 @@ function SummaryCard({ title, value }) {
       <p className="mt-2 text-2xl font-bold">
         {value}
       </p>
+
     </div>
   );
 }
@@ -548,10 +875,12 @@ function Input({
   onChange,
   type = "text",
   step,
+  min,
   placeholder,
 }) {
   return (
     <div>
+
       <label className="mb-2 block text-sm font-semibold">
         {label}
       </label>
@@ -559,13 +888,15 @@ function Input({
       <input
         type={type}
         step={step}
+        min={min}
         value={value}
         placeholder={placeholder}
         onChange={(e) =>
           onChange(e.target.value)
         }
-        className="w-full rounded-xl border px-4 py-3"
+        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-[#02337D] focus:ring-1 focus:ring-[#02337D]"
       />
+
     </div>
   );
 }
