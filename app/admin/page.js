@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAuth } from "@/components/auth/AuthContext";
 
 const summaryCards = [
@@ -87,17 +88,62 @@ const lowStockProducts = [
   },
 ];
 
+/*
+|--------------------------------------------------------------------------
+| Admin Navigation Cards
+|--------------------------------------------------------------------------
+| These links take the administrator to the different management modules.
+| They do not replace any of the existing dashboard functionality.
+*/
+const adminModules = [
+  {
+    title: "Users",
+    description: "Manage administrators and employees",
+    href: "/admin/users",
+    icon: "👥",
+  },
+  {
+    title: "Products",
+    description: "Add, edit and manage products",
+    href: "/admin/products",
+    icon: "📦",
+  },
+  {
+    title: "Stock",
+    description: "Manage inventory and stock movements",
+    href: "/admin/stock",
+    icon: "🏷️",
+  },
+  {
+    title: "Sales",
+    description: "View and manage recorded sales",
+    href: "/admin/sales",
+    icon: "💰",
+  },
+  {
+    title: "Expenses",
+    description: "Track and manage business expenses",
+    href: "/admin/expenses",
+    icon: "🧾",
+  },
+  {
+    title: "Reports",
+    description: "View sales, expenses and profit reports",
+    href: "/admin/reports",
+    icon: "📊",
+  },
+];
+
 export default function AdminDashboard() {
   const { user } = useAuth();
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-
       <div className="mx-auto max-w-7xl">
-
-        {/* Welcome */}
+        {/* ================================================================
+            WELCOME
+        ================================================================= */}
         <div className="mb-8">
-
           <p className="text-sm font-semibold text-[#FE7401]">
             Dashboard Overview
           </p>
@@ -107,25 +153,21 @@ export default function AdminDashboard() {
           </h1>
 
           <p className="mt-2 text-sm text-gray-500">
-            Here's what's happening at BrightSpark
-            Electricals & Electronics.
+            Here's what's happening at BrightSpark Electricals & Electronics.
           </p>
-
         </div>
 
-        {/* Summary Cards */}
+        {/* ================================================================
+            SUMMARY CARDS
+        ================================================================= */}
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-5">
-
           {summaryCards.map((card) => (
             <div
               key={card.title}
               className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
             >
-
               <div className="flex items-start justify-between">
-
                 <div>
-
                   <p className="text-sm font-medium text-gray-500">
                     {card.title}
                   </p>
@@ -133,114 +175,143 @@ export default function AdminDashboard() {
                   <p className="mt-2 text-2xl font-bold text-[#02337D]">
                     {card.value}
                   </p>
-
                 </div>
 
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-100 text-xl">
                   {card.icon}
                 </div>
-
               </div>
 
               <p className="mt-3 text-xs text-gray-500">
                 {card.description}
               </p>
-
             </div>
           ))}
-
         </div>
 
-        {/* Branch Overview */}
-        <div className="mt-8 grid gap-5 lg:grid-cols-2">
+        {/* ================================================================
+            ADMIN MODULES
+        ================================================================= */}
+        <div className="mt-8">
+          <div className="mb-4">
+            <h2 className="text-xl font-bold text-[#02337D]">
+              Management
+            </h2>
 
-          <BranchCard
-            name="Roysambu Branch"
-            location="Lumumba Drive"
-            sales="KSh 295,000"
-            products="245"
-            lowStock="8"
-          />
+            <p className="mt-1 text-sm text-gray-500">
+              Manage BrightSpark operations from the administrator dashboard.
+            </p>
+          </div>
 
-          <BranchCard
-            name="Rangau Branch"
-            location="Rangau"
-            sales="KSh 190,000"
-            products="173"
-            lowStock="5"
-          />
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {adminModules.map((module) => (
+              <Link
+                key={module.title}
+                href={module.href}
+                className="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-[#02337D]/20 hover:shadow-md"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#02337D]/10 text-2xl">
+                    {module.icon}
+                  </div>
 
+                  <span className="text-lg text-gray-300 transition group-hover:translate-x-1 group-hover:text-[#FE7401]">
+                    →
+                  </span>
+                </div>
+
+                <h3 className="mt-4 font-bold text-[#02337D]">
+                  {module.title}
+                </h3>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  {module.description}
+                </p>
+              </Link>
+            ))}
+          </div>
         </div>
 
-        {/* Sales + Low Stock */}
+        {/* ================================================================
+            BRANCH OVERVIEW
+        ================================================================= */}
+        <div className="mt-8">
+          <div className="mb-4">
+            <h2 className="text-xl font-bold text-[#02337D]">
+              Branch Overview
+            </h2>
+
+            <p className="mt-1 text-sm text-gray-500">
+              Current performance across your BrightSpark branches.
+            </p>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <BranchCard
+              name="Roysambu Branch"
+              location="Lumumba Drive"
+              sales="KSh 295,000"
+              products="245"
+              lowStock="8"
+            />
+
+            <BranchCard
+              name="Rangau Branch"
+              location="Rangau"
+              sales="KSh 190,000"
+              products="173"
+              lowStock="5"
+            />
+          </div>
+        </div>
+
+        {/* ================================================================
+            SALES + LOW STOCK
+        ================================================================= */}
         <div className="mt-8 grid gap-8 xl:grid-cols-[1fr_400px]">
-
-          {/* Recent Sales */}
+          {/* ==============================================================
+              RECENT SALES
+          ============================================================== */}
           <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-
             <div className="flex items-center justify-between border-b border-gray-200 p-5">
-
               <div>
-
-                <h2 className="font-bold text-[#02337D]">
-                  Recent Sales
-                </h2>
+                <h2 className="font-bold text-[#02337D]">Recent Sales</h2>
 
                 <p className="mt-1 text-xs text-gray-500">
                   Latest recorded sales
                 </p>
-
               </div>
 
-              <a
+              <Link
                 href="/admin/sales"
                 className="text-sm font-semibold text-[#FE7401] hover:underline"
               >
                 View all
-              </a>
-
+              </Link>
             </div>
 
             <div className="overflow-x-auto">
-
               <table className="w-full min-w-[650px]">
-
                 <thead>
-
                   <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs uppercase tracking-wider text-gray-500">
+                    <th className="px-5 py-4">Sale</th>
 
-                    <th className="px-5 py-4">
-                      Sale
-                    </th>
+                    <th className="px-5 py-4">Product</th>
 
-                    <th className="px-5 py-4">
-                      Product
-                    </th>
+                    <th className="px-5 py-4">Branch</th>
 
-                    <th className="px-5 py-4">
-                      Branch
-                    </th>
+                    <th className="px-5 py-4">Qty</th>
 
-                    <th className="px-5 py-4">
-                      Qty
-                    </th>
-
-                    <th className="px-5 py-4 text-right">
-                      Amount
-                    </th>
-
+                    <th className="px-5 py-4 text-right">Amount</th>
                   </tr>
-
                 </thead>
 
                 <tbody>
-
                   {recentSales.map((sale) => (
                     <tr
                       key={sale.id}
                       className="border-b border-gray-100 last:border-0"
                     >
-
                       <td className="px-5 py-4 text-sm font-semibold text-[#02337D]">
                         {sale.id}
                       </td>
@@ -250,11 +321,7 @@ export default function AdminDashboard() {
                       </td>
 
                       <td className="px-5 py-4">
-
-                        <BranchBadge
-                          branch={sale.branch}
-                        />
-
+                        <BranchBadge branch={sale.branch} />
                       </td>
 
                       <td className="px-5 py-4 text-sm text-gray-600">
@@ -264,43 +331,52 @@ export default function AdminDashboard() {
                       <td className="px-5 py-4 text-right text-sm font-bold text-gray-800">
                         KSh {sale.amount.toLocaleString()}
                       </td>
-
                     </tr>
                   ))}
-
                 </tbody>
-
               </table>
-
             </div>
 
+            {/* Mobile-friendly footer link */}
+            <div className="border-t border-gray-100 p-4 sm:hidden">
+              <Link
+                href="/admin/sales"
+                className="block text-center text-sm font-semibold text-[#FE7401] hover:underline"
+              >
+                View all sales →
+              </Link>
+            </div>
           </section>
 
-          {/* Low Stock */}
+          {/* ==============================================================
+              LOW STOCK
+          ============================================================== */}
           <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-
             <div className="border-b border-gray-200 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-[#02337D]">
+                    Low Stock Alert
+                  </h2>
 
-              <h2 className="font-bold text-[#02337D]">
-                Low Stock Alert
-              </h2>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Products requiring attention
+                  </p>
+                </div>
 
-              <p className="mt-1 text-xs text-gray-500">
-                Products requiring attention
-              </p>
-
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-sm text-red-600">
+                  !
+                </div>
+              </div>
             </div>
 
             <div className="divide-y divide-gray-100">
-
               {lowStockProducts.map((product) => (
                 <div
                   key={`${product.name}-${product.branch}`}
                   className="flex items-center justify-between gap-4 p-5"
                 >
-
                   <div>
-
                     <p className="text-sm font-semibold text-gray-800">
                       {product.name}
                     </p>
@@ -308,11 +384,9 @@ export default function AdminDashboard() {
                     <p className="mt-1 text-xs text-gray-500">
                       {product.branch}
                     </p>
-
                   </div>
 
                   <div className="text-right">
-
                     <p className="font-bold text-red-600">
                       {product.stock} left
                     </p>
@@ -320,34 +394,70 @@ export default function AdminDashboard() {
                     <p className="text-xs text-gray-400">
                       Minimum {product.minimum}
                     </p>
-
                   </div>
-
                 </div>
               ))}
-
             </div>
 
             <div className="border-t border-gray-100 p-5">
-
-              <a
+              <Link
                 href="/admin/stock"
                 className="block text-center text-sm font-semibold text-[#FE7401] hover:underline"
               >
                 View stock →
-              </a>
-
+              </Link>
             </div>
-
           </section>
-
         </div>
 
-      </div>
+        {/* ================================================================
+            QUICK ACTIONS
+        ================================================================= */}
+        <div className="mt-8 rounded-2xl bg-[#02337D] p-6 text-white shadow-sm">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-xl font-bold">Quick Actions</h2>
 
+              <p className="mt-1 text-sm text-blue-100">
+                Quickly access the most commonly used management functions.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <QuickAction
+                href="/admin/products"
+                icon="📦"
+                label="Products"
+              />
+
+              <QuickAction
+                href="/admin/stock"
+                icon="➕"
+                label="Add Stock"
+              />
+
+              <QuickAction
+                href="/admin/sales"
+                icon="💰"
+                label="Sales"
+              />
+
+              <QuickAction
+                href="/admin/reports"
+                icon="📊"
+                label="Reports"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
+
+/* ==========================================================================
+   BRANCH CARD
+========================================================================== */
 
 function BranchCard({
   name,
@@ -358,70 +468,50 @@ function BranchCard({
 }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-
       <div className="flex items-start justify-between">
-
         <div>
+          <h2 className="font-bold text-[#02337D]">{name}</h2>
 
-          <h2 className="font-bold text-[#02337D]">
-            {name}
-          </h2>
-
-          <p className="mt-1 text-sm text-gray-500">
-            {location}
-          </p>
-
+          <p className="mt-1 text-sm text-gray-500">{location}</p>
         </div>
 
         <div className="rounded-xl bg-[#02337D]/10 px-3 py-2 text-xl">
           🏪
         </div>
-
       </div>
 
       <div className="mt-6 grid grid-cols-3 gap-4">
-
         <div>
-
-          <p className="text-xs text-gray-500">
-            Sales
-          </p>
+          <p className="text-xs text-gray-500">Sales</p>
 
           <p className="mt-1 text-sm font-bold text-gray-800">
             {sales}
           </p>
-
         </div>
 
         <div>
-
-          <p className="text-xs text-gray-500">
-            Products
-          </p>
+          <p className="text-xs text-gray-500">Products</p>
 
           <p className="mt-1 text-sm font-bold text-gray-800">
             {products}
           </p>
-
         </div>
 
         <div>
-
-          <p className="text-xs text-gray-500">
-            Low Stock
-          </p>
+          <p className="text-xs text-gray-500">Low Stock</p>
 
           <p className="mt-1 text-sm font-bold text-red-600">
             {lowStock}
           </p>
-
         </div>
-
       </div>
-
     </div>
   );
 }
+
+/* ==========================================================================
+   BRANCH BADGE
+========================================================================== */
 
 function BranchBadge({ branch }) {
   const isRoysambu = branch === "Roysambu";
@@ -436,5 +526,24 @@ function BranchBadge({ branch }) {
     >
       {branch}
     </span>
+  );
+}
+
+/* ==========================================================================
+   QUICK ACTION
+========================================================================== */
+
+function QuickAction({ href, icon, label }) {
+  return (
+    <Link
+      href={href}
+      className="flex min-w-[100px] flex-col items-center justify-center rounded-xl bg-white/10 px-4 py-3 text-center transition hover:bg-white/20"
+    >
+      <span className="text-xl">{icon}</span>
+
+      <span className="mt-1 text-xs font-semibold text-white">
+        {label}
+      </span>
+    </Link>
   );
 }
