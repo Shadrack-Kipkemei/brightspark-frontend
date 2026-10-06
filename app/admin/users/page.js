@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
 import { useAuth } from "@/components/auth/AuthContext";
 
 const INITIAL_USERS = [
@@ -9,35 +10,44 @@ const INITIAL_USERS = [
     id: "USR-001",
     name: "System Administrator",
     email: "admin@brightspark.co.ke",
-    phone: "0712345678",
+    phone: "0700000000",
     role: "admin",
     branch: "All Branches",
-    status: "Active",
+    status: "active",
     createdAt: "2026-09-01",
   },
   {
     id: "USR-002",
     name: "John Employee",
     email: "john@brightspark.co.ke",
-    phone: "0723456789",
+    phone: "0712345678",
     role: "employee",
     branch: "Roysambu",
-    status: "Active",
-    createdAt: "2026-09-15",
+    status: "active",
+    createdAt: "2026-09-05",
   },
   {
     id: "USR-003",
     name: "Jane Employee",
     email: "jane@brightspark.co.ke",
-    phone: "0734567890",
+    phone: "0723456789",
     role: "employee",
     branch: "Rangau",
-    status: "Active",
-    createdAt: "2026-09-18",
+    status: "active",
+    createdAt: "2026-09-08",
   },
 ];
 
-export default function AdminUsersPage() {
+const EMPTY_FORM = {
+  name: "",
+  email: "",
+  phone: "",
+  role: "employee",
+  branch: "Roysambu",
+  password: "",
+};
+
+export default function UsersPage() {
   const router = useRouter();
 
   const { user, loading, isAuthenticated } = useAuth();
@@ -45,21 +55,16 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState(INITIAL_USERS);
 
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("All");
-  const [branchFilter, setBranchFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
 
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    role: "employee",
-    branch: "Roysambu",
-    password: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
+
+  const [showPassword, setShowPassword] = useState(false);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -77,77 +82,67 @@ export default function AdminUsersPage() {
     }
   }, [loading, isAuthenticated, user, router]);
 
-  const filteredUsers = useMemo(() => {
-    return users.filter((item) => {
-      const searchText = search.toLowerCase().trim();
+  if (loading || !isAuthenticated || user?.role !== "admin") {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <div className="text-center">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-[#02337D]" />
 
-      const matchesSearch =
-        !searchText ||
-        item.name.toLowerCase().includes(searchText) ||
-        item.email.toLowerCase().includes(searchText) ||
-        item.phone.includes(searchText) ||
-        item.id.toLowerCase().includes(searchText);
+          <p className="mt-4 text-sm text-gray-500">
+            Loading users...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-      const matchesRole =
-        roleFilter === "All" ||
-        item.role === roleFilter;
+  const filteredUsers = users.filter((item) => {
+    const searchText = search.toLowerCase();
 
-      const matchesBranch =
-        branchFilter === "All" ||
-        item.branch === branchFilter;
+    const matchesSearch =
+      item.name.toLowerCase().includes(searchText) ||
+      item.email.toLowerCase().includes(searchText) ||
+      item.phone.toLowerCase().includes(searchText) ||
+      item.id.toLowerCase().includes(searchText);
 
-      const matchesStatus =
-        statusFilter === "All" ||
-        item.status === statusFilter;
+    const matchesRole =
+      roleFilter === "all" || item.role === roleFilter;
 
-      return (
-        matchesSearch &&
-        matchesRole &&
-        matchesBranch &&
-        matchesStatus
-      );
-    });
-  }, [
-    users,
-    search,
-    roleFilter,
-    branchFilter,
-    statusFilter,
-  ]);
+    const matchesBranch =
+      branchFilter === "all" ||
+      item.branch === branchFilter ||
+      (branchFilter === "all-branches" &&
+        item.branch === "All Branches");
 
-  const adminCount = users.filter(
-    (item) => item.role === "admin"
-  ).length;
+    const matchesStatus =
+      statusFilter === "all" || item.status === statusFilter;
 
-  const employeeCount = users.filter(
-    (item) => item.role === "employee"
-  ).length;
-
-  const activeCount = users.filter(
-    (item) => item.status === "Active"
-  ).length;
+    return (
+      matchesSearch &&
+      matchesRole &&
+      matchesBranch &&
+      matchesStatus
+    );
+  });
 
   const openAddModal = () => {
     setEditingUser(null);
 
-    setForm({
-      name: "",
-      email: "",
-      phone: "",
-      role: "employee",
-      branch: "Roysambu",
-      password: "",
+    setFormData({
+      ...EMPTY_FORM,
     });
 
+    setShowPassword(false);
     setError("");
     setSuccess("");
+
     setShowModal(true);
   };
 
   const openEditModal = (selectedUser) => {
     setEditingUser(selectedUser);
 
-    setForm({
+    setFormData({
       name: selectedUser.name,
       email: selectedUser.email,
       phone: selectedUser.phone,
@@ -159,21 +154,26 @@ export default function AdminUsersPage() {
       password: "",
     });
 
+    setShowPassword(false);
     setError("");
     setSuccess("");
+
     setShowModal(true);
   };
 
   const closeModal = () => {
     setShowModal(false);
     setEditingUser(null);
+    setFormData(EMPTY_FORM);
+    setShowPassword(false);
     setError("");
+    setSuccess("");
   };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
 
-    setForm((previous) => ({
+    setFormData((previous) => ({
       ...previous,
       [name]: value,
     }));
@@ -182,15 +182,10 @@ export default function AdminUsersPage() {
   const handleRoleChange = (event) => {
     const role = event.target.value;
 
-    setForm((previous) => ({
+    setFormData((previous) => ({
       ...previous,
       role,
-      branch:
-        role === "admin"
-          ? "All Branches"
-          : previous.branch === "All Branches"
-            ? "Roysambu"
-            : previous.branch,
+      branch: role === "admin" ? "All Branches" : "Roysambu",
     }));
   };
 
@@ -200,137 +195,97 @@ export default function AdminUsersPage() {
     setError("");
     setSuccess("");
 
-    if (!form.name.trim()) {
+    if (!formData.name.trim()) {
       setError("Please enter the user's full name.");
       return;
     }
 
-    if (!form.email.trim()) {
-      setError("Please enter the user's email.");
+    if (!formData.email.trim()) {
+      setError("Please enter the user's email address.");
       return;
     }
 
-    if (!form.phone.trim()) {
+    if (!formData.phone.trim()) {
       setError("Please enter the user's phone number.");
       return;
     }
 
-    if (!editingUser && !form.password) {
+    if (!editingUser && !formData.password.trim()) {
       setError("Please enter a temporary password.");
       return;
     }
 
-    if (!editingUser && form.password.length < 6) {
-      setError(
-        "The temporary password must contain at least 6 characters."
-      );
-      return;
-    }
-
-    if (
-      form.role === "employee" &&
-      form.branch === "All Branches"
-    ) {
-      setError(
-        "An employee must be assigned to a specific branch."
-      );
+    if (!editingUser && formData.password.length < 6) {
+      setError("Password must be at least 6 characters.");
       return;
     }
 
     if (editingUser) {
-      setUsers((previous) =>
-        previous.map((item) =>
+      setUsers((previousUsers) =>
+        previousUsers.map((item) =>
           item.id === editingUser.id
             ? {
                 ...item,
-                name: form.name.trim(),
-                email: form.email.trim(),
-                phone: form.phone.trim(),
-                role: form.role,
+                name: formData.name.trim(),
+                email: formData.email.trim(),
+                phone: formData.phone.trim(),
+                role: formData.role,
                 branch:
-                  form.role === "admin"
+                  formData.role === "admin"
                     ? "All Branches"
-                    : form.branch,
+                    : formData.branch,
               }
             : item
         )
       );
 
-      setSuccess("User updated successfully.");
+      setSuccess("User details updated successfully.");
 
       setTimeout(() => {
         closeModal();
-      }, 700);
+      }, 900);
 
-      return;
-    }
-
-    const emailExists = users.some(
-      (item) =>
-        item.email.toLowerCase() ===
-        form.email.trim().toLowerCase()
-    );
-
-    if (emailExists) {
-      setError("A user with this email already exists.");
       return;
     }
 
     const newUser = {
       id: `USR-${String(users.length + 1).padStart(3, "0")}`,
-      name: form.name.trim(),
-      email: form.email.trim(),
-      phone: form.phone.trim(),
-      role: form.role,
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      phone: formData.phone.trim(),
+      role: formData.role,
       branch:
-        form.role === "admin"
+        formData.role === "admin"
           ? "All Branches"
-          : form.branch,
-      status: "Active",
+          : formData.branch,
+      status: "active",
       createdAt: new Date().toISOString().split("T")[0],
     };
 
-    setUsers((previous) => [newUser, ...previous]);
+    setUsers((previousUsers) => [newUser, ...previousUsers]);
 
-    setSuccess("User created successfully.");
-
-    setForm({
-      name: "",
-      email: "",
-      phone: "",
-      role: "employee",
-      branch: "Roysambu",
-      password: "",
-    });
+    setSuccess(
+      `${formData.role === "admin" ? "Administrator" : "Employee"} created successfully.`
+    );
 
     setTimeout(() => {
       closeModal();
-    }, 700);
+    }, 900);
   };
 
-  const toggleStatus = (selectedUser) => {
+  const toggleUserStatus = (selectedUser) => {
     if (selectedUser.id === user?.id) {
-      alert("You cannot deactivate your own account.");
+      setError("You cannot deactivate your own account.");
       return;
     }
 
     const newStatus =
-      selectedUser.status === "Active"
-        ? "Inactive"
-        : "Active";
+      selectedUser.status === "active"
+        ? "inactive"
+        : "active";
 
-    const confirmed = window.confirm(
-      `${newStatus === "Inactive" ? "Deactivate" : "Activate"} ${
-        selectedUser.name
-      }?`
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setUsers((previous) =>
-      previous.map((item) =>
+    setUsers((previousUsers) =>
+      previousUsers.map((item) =>
         item.id === selectedUser.id
           ? {
               ...item,
@@ -339,126 +294,139 @@ export default function AdminUsersPage() {
           : item
       )
     );
-  };
 
-  const clearFilters = () => {
-    setSearch("");
-    setRoleFilter("All");
-    setBranchFilter("All");
-    setStatusFilter("All");
-  };
-
-  if (
-    loading ||
-    !isAuthenticated ||
-    user?.role !== "admin"
-  ) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <p className="text-slate-600">
-          Loading...
-        </p>
-      </div>
+    setSuccess(
+      `${selectedUser.name} has been ${
+        newStatus === "active"
+          ? "activated"
+          : "deactivated"
+      }.`
     );
-  }
+
+    setTimeout(() => {
+      setSuccess("");
+    }, 2500);
+  };
+
+  const activeUsers = users.filter(
+    (item) => item.status === "active"
+  ).length;
+
+  const employeeCount = users.filter(
+    (item) => item.role === "employee"
+  ).length;
+
+  const adminCount = users.filter(
+    (item) => item.role === "admin"
+  ).length;
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-[#02337D] text-white">
-        <div className="mx-auto max-w-7xl px-6 py-6">
-          <button
-            onClick={() => router.push("/admin")}
-            className="mb-3 text-sm text-blue-100 hover:text-white"
-          >
-            ← Back to Dashboard
-          </button>
+    <div className="p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-7xl">
+        {/* ============================================================
+            HEADER
+        ============================================================ */}
+        <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-[#FE7401]">
+              User Management
+            </p>
 
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">
-                User Management
-              </h1>
+            <h1 className="mt-1 text-3xl font-bold text-[#02337D]">
+              Users
+            </h1>
 
-              <p className="mt-1 text-sm text-blue-100">
-                Manage BrightSpark administrators and employees.
-              </p>
-            </div>
-
-            <button
-              onClick={openAddModal}
-              className="rounded-lg bg-[#FE7401] px-5 py-3 font-semibold text-white hover:bg-orange-600"
-            >
-              + Add User
-            </button>
+            <p className="mt-2 text-sm text-gray-500">
+              Manage administrators and employees across BrightSpark
+              branches.
+            </p>
           </div>
-        </div>
-      </header>
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        {/* Summary */}
-        <div className="mb-8 grid gap-4 md:grid-cols-4">
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#02337D] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#01295f]"
+          >
+            <span className="text-lg">+</span>
+            Add User
+          </button>
+        </div>
+
+        {/* ============================================================
+            SUCCESS / ERROR MESSAGES
+        ============================================================ */}
+        {success && (
+          <div className="mb-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+            {success}
+          </div>
+        )}
+
+        {error && !showModal && (
+          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {error}
+          </div>
+        )}
+
+        {/* ============================================================
+            SUMMARY CARDS
+        ============================================================ */}
+        <div className="mb-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             title="Total Users"
             value={users.length}
+            icon="👥"
+          />
+
+          <SummaryCard
+            title="Active Users"
+            value={activeUsers}
+            icon="✅"
           />
 
           <SummaryCard
             title="Administrators"
             value={adminCount}
+            icon="🛡️"
           />
 
           <SummaryCard
             title="Employees"
             value={employeeCount}
-          />
-
-          <SummaryCard
-            title="Active Users"
-            value={activeCount}
+            icon="👨‍💼"
           />
         </div>
 
-        {/* Filters */}
-        <section className="mb-6 rounded-xl bg-white p-6 shadow-sm">
-          <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Search & Filters
-              </h2>
-
-              <p className="text-sm text-slate-500">
-                Find users by name, role, branch or status.
-              </p>
-            </div>
-
-            <button
-              onClick={clearFilters}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-            >
-              Clear Filters
-            </button>
-          </div>
-
+        {/* ============================================================
+            FILTERS
+        ============================================================ */}
+        <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <label className="mb-2 block text-xs font-semibold uppercase text-slate-500">
+            {/* Search */}
+            <div className="lg:col-span-1">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Search
               </label>
 
-              <input
-                type="text"
-                value={search}
-                onChange={(event) =>
-                  setSearch(event.target.value)
-                }
-                placeholder="Search users..."
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#FE7401]"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) =>
+                    setSearch(event.target.value)
+                  }
+                  placeholder="Name, email, phone..."
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/10"
+                />
+
+                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                  🔍
+                </span>
+              </div>
             </div>
 
+            {/* Role */}
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase text-slate-500">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Role
               </label>
 
@@ -467,18 +435,17 @@ export default function AdminUsersPage() {
                 onChange={(event) =>
                   setRoleFilter(event.target.value)
                 }
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[#FE7401]"
+                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/10"
               >
-                <option value="All">All Roles</option>
-                <option value="admin">Admin</option>
-                <option value="employee">
-                  Employee
-                </option>
+                <option value="all">All Roles</option>
+                <option value="admin">Administrators</option>
+                <option value="employee">Employees</option>
               </select>
             </div>
 
+            {/* Branch */}
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase text-slate-500">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Branch
               </label>
 
@@ -487,23 +454,17 @@ export default function AdminUsersPage() {
                 onChange={(event) =>
                   setBranchFilter(event.target.value)
                 }
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[#FE7401]"
+                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/10"
               >
-                <option value="All">All Branches</option>
-                <option value="Roysambu">
-                  Roysambu
-                </option>
-                <option value="Rangau">
-                  Rangau
-                </option>
-                <option value="All Branches">
-                  All Branches
-                </option>
+                <option value="all">All Branches</option>
+                <option value="Roysambu">Roysambu</option>
+                <option value="Rangau">Rangau</option>
               </select>
             </div>
 
+            {/* Status */}
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase text-slate-500">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Status
               </label>
 
@@ -512,386 +473,571 @@ export default function AdminUsersPage() {
                 onChange={(event) =>
                   setStatusFilter(event.target.value)
                 }
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[#FE7401]"
+                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/10"
               >
-                <option value="All">All Statuses</option>
-                <option value="Active">Active</option>
-                <option value="Inactive">
-                  Inactive
-                </option>
+                <option value="all">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
               </select>
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* Users Table */}
-        <section className="overflow-hidden rounded-xl bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-5">
-            <h2 className="text-lg font-bold text-slate-900">
-              System Users
-            </h2>
+        {/* ============================================================
+            USERS TABLE
+        ============================================================ */}
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-2 border-b border-gray-200 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-bold text-[#02337D]">
+                System Users
+              </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              {filteredUsers.length} user
-              {filteredUsers.length !== 1 ? "s" : ""} found.
-            </p>
-          </div>
-
-          {filteredUsers.length === 0 ? (
-            <div className="px-6 py-16 text-center">
-              <p className="text-slate-500">
-                No users match your filters.
+              <p className="mt-1 text-xs text-gray-500">
+                {filteredUsers.length} user
+                {filteredUsers.length !== 1 ? "s" : ""} displayed
               </p>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px]">
-                <thead className="bg-slate-50">
+
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setRoleFilter("all");
+                setBranchFilter("all");
+                setStatusFilter("all");
+              }}
+              className="text-sm font-semibold text-[#FE7401] hover:underline"
+            >
+              Clear filters
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[950px]">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs uppercase tracking-wider text-gray-500">
+                  <th className="px-5 py-4">User</th>
+                  <th className="px-5 py-4">Role</th>
+                  <th className="px-5 py-4">Branch</th>
+                  <th className="px-5 py-4">Status</th>
+                  <th className="px-5 py-4">Created</th>
+                  <th className="px-5 py-4 text-right">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredUsers.length === 0 ? (
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase text-slate-500">
-                      User
-                    </th>
+                    <td
+                      colSpan="6"
+                      className="px-5 py-12 text-center"
+                    >
+                      <div className="text-3xl">👥</div>
 
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase text-slate-500">
-                      Contact
-                    </th>
+                      <p className="mt-3 font-semibold text-gray-700">
+                        No users found
+                      </p>
 
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase text-slate-500">
-                      Role
-                    </th>
-
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase text-slate-500">
-                      Branch
-                    </th>
-
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase text-slate-500">
-                      Status
-                    </th>
-
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase text-slate-500">
-                      Created
-                    </th>
-
-                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase text-slate-500">
-                      Actions
-                    </th>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Try changing your search or filters.
+                      </p>
+                    </td>
                   </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {filteredUsers.map((item) => (
+                ) : (
+                  filteredUsers.map((item) => (
                     <tr
                       key={item.id}
-                      className="hover:bg-slate-50"
+                      className="border-b border-gray-100 last:border-0 hover:bg-gray-50/70"
                     >
-                      <td className="px-6 py-4">
+                      {/* User */}
+                      <td className="px-5 py-4">
                         <div>
-                          <p className="font-semibold text-slate-900">
+                          <p className="font-semibold text-gray-800">
                             {item.name}
+                            {item.id === user?.id && (
+                              <span className="ml-2 rounded-full bg-blue-50 px-2 py-1 text-[10px] font-semibold text-[#02337D]">
+                                YOU
+                              </span>
+                            )}
                           </p>
 
-                          <p className="text-xs text-slate-500">
-                            {item.id}
+                          <p className="mt-1 text-xs text-gray-500">
+                            {item.email}
+                          </p>
+
+                          <p className="mt-1 text-xs text-gray-400">
+                            {item.phone}
                           </p>
                         </div>
                       </td>
 
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-slate-700">
-                          {item.email}
-                        </p>
-
-                        <p className="text-xs text-slate-500">
-                          {item.phone}
-                        </p>
+                      {/* Role */}
+                      <td className="px-5 py-4">
+                        <RoleBadge role={item.role} />
                       </td>
 
-                      <td className="px-6 py-4">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            item.role === "admin"
-                              ? "bg-blue-50 text-blue-700"
-                              : "bg-orange-50 text-orange-700"
-                          }`}
-                        >
-                          {item.role === "admin"
-                            ? "Admin"
-                            : "Employee"}
-                        </span>
+                      {/* Branch */}
+                      <td className="px-5 py-4">
+                        <BranchBadge branch={item.branch} />
                       </td>
 
-                      <td className="px-6 py-4 text-sm text-slate-700">
-                        {item.branch}
+                      {/* Status */}
+                      <td className="px-5 py-4">
+                        <StatusBadge status={item.status} />
                       </td>
 
-                      <td className="px-6 py-4">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            item.status === "Active"
-                              ? "bg-green-50 text-green-700"
-                              : "bg-red-50 text-red-700"
-                          }`}
-                        >
-                          {item.status}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-500">
+                      {/* Created */}
+                      <td className="px-5 py-4 text-sm text-gray-600">
                         {item.createdAt}
                       </td>
 
-                      <td className="px-6 py-4">
-                        <div className="flex justify-end gap-2">
+                      {/* Actions */}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center justify-end gap-2">
                           <button
+                            type="button"
                             onClick={() =>
                               openEditModal(item)
                             }
-                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-[#02337D] transition hover:bg-blue-50"
                           >
                             Edit
                           </button>
 
                           <button
+                            type="button"
                             onClick={() =>
-                              toggleStatus(item)
+                              toggleUserStatus(item)
                             }
-                            className={`rounded-lg px-3 py-2 text-sm font-medium ${
-                              item.status === "Active"
-                                ? "bg-red-50 text-red-600 hover:bg-red-100"
-                                : "bg-green-50 text-green-600 hover:bg-green-100"
+                            disabled={item.id === user?.id}
+                            className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                              item.id === user?.id
+                                ? "cursor-not-allowed bg-gray-100 text-gray-400"
+                                : item.status === "active"
+                                ? "border border-red-200 text-red-600 hover:bg-red-50"
+                                : "border border-green-200 text-green-600 hover:bg-green-50"
                             }`}
                           >
-                            {item.status === "Active"
+                            {item.status === "active"
                               ? "Deactivate"
                               : "Activate"}
                           </button>
                         </div>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
-      {/* Add/Edit Modal */}
+      {/* ================================================================
+          ADD / EDIT USER MODAL
+      ================================================================= */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             {/* Modal Header */}
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-5">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-5">
               <div>
-                <h2 className="text-xl font-bold text-[#02337D]">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#FE7401]">
+                  {editingUser ? "Edit User" : "User Management"}
+                </p>
+
+                <h2 className="mt-1 text-xl font-bold text-[#02337D]">
                   {editingUser
-                    ? "Edit User"
+                    ? "Edit User Details"
                     : "Add New User"}
                 </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  {editingUser
-                    ? "Update the user's account details."
-                    : "Create an administrator or employee account."}
-                </p>
               </div>
 
               <button
+                type="button"
                 onClick={closeModal}
-                className="text-2xl text-slate-400 hover:text-slate-700"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-xl text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Close"
               >
                 ×
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="max-h-[calc(90vh-150px)] overflow-y-auto px-6 py-6">
-              {error && (
-                <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {error}
-                </div>
-              )}
-
-              {success && (
-                <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                  {success}
-                </div>
-              )}
-
+            {/* Modal Content */}
+            <div className="max-h-[calc(90vh-145px)] overflow-y-auto">
               <form
-                id="user-form"
                 onSubmit={handleSubmit}
-                className="space-y-5"
+                className="space-y-5 p-6"
               >
+                {/* Error */}
+                {error && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                    {error}
+                  </div>
+                )}
+
                 {/* Name */}
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                  <label className="mb-2 block text-sm font-semibold text-gray-700">
                     Full Name
                   </label>
 
                   <input
                     type="text"
                     name="name"
-                    value={form.name}
+                    value={formData.name}
                     onChange={handleChange}
                     placeholder="Enter full name"
-                    className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#FE7401]"
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/10"
+                    required
                   />
                 </div>
 
-                {/* Email */}
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Email Address
-                  </label>
-
-                  <input
-                    type="email"
-                    name="email"
-                    value={form.email}
-                    onChange={handleChange}
-                    placeholder="user@brightspark.co.ke"
-                    className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#FE7401]"
-                  />
-                </div>
-
-                {/* Phone */}
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Phone Number
-                  </label>
-
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={form.phone}
-                    onChange={handleChange}
-                    placeholder="07XXXXXXXX"
-                    className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#FE7401]"
-                  />
-                </div>
-
-                {/* Role */}
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Role
-                  </label>
-
-                  <select
-                    name="role"
-                    value={form.role}
-                    onChange={handleRoleChange}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[#FE7401]"
-                  >
-                    <option value="employee">
-                      Employee
-                    </option>
-
-                    <option value="admin">
-                      Administrator
-                    </option>
-                  </select>
-                </div>
-
-                {/* Branch */}
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Branch
-                  </label>
-
-                  <select
-                    name="branch"
-                    value={form.branch}
-                    onChange={handleChange}
-                    disabled={form.role === "admin"}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none disabled:bg-slate-100 disabled:text-slate-500 focus:border-[#FE7401]"
-                  >
-                    {form.role === "admin" ? (
-                      <option value="All Branches">
-                        All Branches
-                      </option>
-                    ) : (
-                      <>
-                        <option value="Roysambu">
-                          Roysambu
-                        </option>
-
-                        <option value="Rangau">
-                          Rangau
-                        </option>
-                      </>
-                    )}
-                  </select>
-
-                  {form.role === "admin" && (
-                    <p className="mt-2 text-xs text-slate-500">
-                      Administrators can manage both branches.
-                    </p>
-                  )}
-                </div>
-
-                {/* Password */}
-                {!editingUser && (
+                {/* Email + Phone */}
+                <div className="grid gap-5 md:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-slate-700">
-                      Temporary Password
+                    <label className="mb-2 block text-sm font-semibold text-gray-700">
+                      Email Address
                     </label>
 
                     <input
-                      type="password"
-                      name="password"
-                      value={form.password}
+                      type="email"
+                      name="email"
+                      value={formData.email}
                       onChange={handleChange}
-                      placeholder="Minimum 6 characters"
-                      className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#FE7401]"
+                      placeholder="user@brightspark.co.ke"
+                      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/10"
+                      required
                     />
+                  </div>
 
-                    <p className="mt-2 text-xs text-slate-500">
-                      The user should change this password after
-                      signing in.
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-gray-700">
+                      Phone Number
+                    </label>
+
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      placeholder="07XXXXXXXX"
+                      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/10"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Role + Branch */}
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-gray-700">
+                      Role
+                    </label>
+
+                    <select
+                      name="role"
+                      value={formData.role}
+                      onChange={handleRoleChange}
+                      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/10"
+                    >
+                      <option value="employee">
+                        Employee
+                      </option>
+
+                      <option value="admin">
+                        Administrator
+                      </option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-gray-700">
+                      Branch
+                    </label>
+
+                    <select
+                      name="branch"
+                      value={formData.branch}
+                      onChange={handleChange}
+                      disabled={formData.role === "admin"}
+                      className={`w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/10 ${
+                        formData.role === "admin"
+                          ? "cursor-not-allowed bg-gray-100 text-gray-500"
+                          : "bg-white"
+                      }`}
+                    >
+                      {formData.role === "admin" ? (
+                        <option value="All Branches">
+                          All Branches
+                        </option>
+                      ) : (
+                        <>
+                          <option value="Roysambu">
+                            Roysambu
+                          </option>
+
+                          <option value="Rangau">
+                            Rangau
+                          </option>
+                        </>
+                      )}
+                    </select>
+
+                    {formData.role === "admin" && (
+                      <p className="mt-2 text-xs text-gray-500">
+                        Administrators can manage both branches.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* ======================================================
+                    PASSWORD
+                ====================================================== */}
+                {!editingUser && (
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-gray-700">
+                      Temporary Password
+                    </label>
+
+                    <div className="relative">
+                      <input
+                        type={
+                          showPassword
+                            ? "text"
+                            : "password"
+                        }
+                        name="password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        placeholder="Enter temporary password"
+                        className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pr-12 text-sm outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/10"
+                        required
+                      />
+
+                      {/* SVG EYE BUTTON */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowPassword(
+                            (previous) => !previous
+                          )
+                        }
+                        className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-[#02337D]"
+                        aria-label={
+                          showPassword
+                            ? "Hide password"
+                            : "Show password"
+                        }
+                        title={
+                          showPassword
+                            ? "Hide password"
+                            : "Show password"
+                        }
+                      >
+                        {showPassword ? (
+                          /* ==================================================
+                             EYE WITH SLASH - PASSWORD VISIBLE
+                          ================================================== */
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            className="h-5 w-5"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M3.98 8.223A10.477 10.477 0 0 0 2.25 12c1.5 4.5 5.61 7.75 9.75 7.75 1.51 0 2.95-.36 4.22-1"
+                            />
+
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M6.228 6.228A10.45 10.45 0 0 1 12 4.25c4.14 0 8.25 3.25 9.75 7.75a10.49 10.49 0 0 1-2.32 3.76"
+                            />
+
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M3 3l18 18"
+                            />
+
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M10.58 10.58a2 2 0 0 0 2.83 2.83"
+                            />
+                          </svg>
+                        ) : (
+                          /* ==================================================
+                             NORMAL EYE - PASSWORD HIDDEN
+                          ================================================== */
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            className="h-5 w-5"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M2.25 12s3.75-7.75 9.75-7.75S21.75 12 21.75 12 18 19.75 12 19.75 2.25 12 2.25 12Z"
+                            />
+
+                            <circle
+                              cx="12"
+                              cy="12"
+                              r="3"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+
+                    <p className="mt-2 text-xs text-gray-500">
+                      The employee can use this password to log in.
                     </p>
                   </div>
                 )}
+
+                {/* Editing password note */}
+                {editingUser && (
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                    <p className="text-sm font-medium text-[#02337D]">
+                      Password
+                    </p>
+
+                    <p className="mt-1 text-xs text-gray-600">
+                      Password changes will be handled separately.
+                      Editing this user's details will not change their
+                      current password.
+                    </p>
+                  </div>
+                )}
+
+                {/* Modal Footer */}
+                <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="rounded-xl border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-[#02337D] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#01295f]"
+                  >
+                    {editingUser
+                      ? "Save Changes"
+                      : "Create User"}
+                  </button>
+                </div>
               </form>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="flex shrink-0 justify-end gap-3 border-t border-slate-200 px-6 py-4">
-              <button
-                type="button"
-                onClick={closeModal}
-                className="rounded-lg border border-slate-300 px-5 py-3 font-medium text-slate-600 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                form="user-form"
-                className="rounded-lg bg-[#FE7401] px-5 py-3 font-semibold text-white hover:bg-orange-600"
-              >
-                {editingUser
-                  ? "Save Changes"
-                  : "Create User"}
-              </button>
             </div>
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }
 
-function SummaryCard({ title, value }) {
-  return (
-    <div className="rounded-xl bg-white p-6 shadow-sm">
-      <p className="text-sm font-medium text-slate-500">
-        {title}
-      </p>
+/* ==========================================================================
+   SUMMARY CARD
+========================================================================== */
 
-      <p className="mt-2 text-2xl font-bold text-[#02337D]">
-        {value}
-      </p>
+function SummaryCard({ title, value, icon }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-500">
+            {title}
+          </p>
+
+          <p className="mt-2 text-2xl font-bold text-[#02337D]">
+            {value}
+          </p>
+        </div>
+
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-100 text-xl">
+          {icon}
+        </div>
+      </div>
     </div>
+  );
+}
+
+/* ==========================================================================
+   ROLE BADGE
+========================================================================== */
+
+function RoleBadge({ role }) {
+  const isAdmin = role === "admin";
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+        isAdmin
+          ? "bg-purple-50 text-purple-700"
+          : "bg-blue-50 text-[#02337D]"
+      }`}
+    >
+      {isAdmin ? "Administrator" : "Employee"}
+    </span>
+  );
+}
+
+/* ==========================================================================
+   BRANCH BADGE
+========================================================================== */
+
+function BranchBadge({ branch }) {
+  const isRoysambu = branch === "Roysambu";
+
+  const isAllBranches = branch === "All Branches";
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+        isAllBranches
+          ? "bg-purple-50 text-purple-700"
+          : isRoysambu
+          ? "bg-blue-50 text-[#02337D]"
+          : "bg-orange-50 text-[#FE7401]"
+      }`}
+    >
+      {branch}
+    </span>
+  );
+}
+
+/* ==========================================================================
+   STATUS BADGE
+========================================================================== */
+
+function StatusBadge({ status }) {
+  const isActive = status === "active";
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+        isActive
+          ? "bg-green-50 text-green-700"
+          : "bg-gray-100 text-gray-500"
+      }`}
+    >
+      {isActive ? "Active" : "Inactive"}
+    </span>
   );
 }
