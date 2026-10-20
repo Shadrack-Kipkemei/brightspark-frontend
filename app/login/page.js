@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { loginUser } from "@/services/authService";
-import { saveAuthData } from "@/lib/authStorage";
+import { useAuth } from "@/components/auth/AuthContext";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login } = useAuth();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -37,16 +37,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await loginUser(
+      const response = await login(
         formData.email,
         formData.password
       );
-
-      saveAuthData({
-        accessToken: response.access_token,
-        refreshToken: response.refresh_token,
-        user: response.user,
-      });
 
       if (response.user.role === "admin") {
         router.replace("/admin");
