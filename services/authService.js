@@ -1,9 +1,6 @@
 import apiRequest from "../lib/apiClient";
 
-export async function loginUser(
-  email,
-  password
-) {
+export async function loginUser(email, password) {
   return apiRequest("/auth/login", {
     method: "POST",
     body: {
@@ -13,26 +10,21 @@ export async function loginUser(
   });
 }
 
-export async function getCurrentUser(
-  token
-) {
+export async function getCurrentUser(token) {
   return apiRequest("/auth/me", {
+    method: "GET",
     token,
   });
 }
 
-export async function refreshAccessToken(
-  refreshToken
-) {
+export async function refreshAccessToken(refreshToken) {
   return apiRequest("/auth/refresh", {
     method: "POST",
     token: refreshToken,
   });
 }
 
-export async function logoutUser(
-  token
-) {
+export async function logoutUser(token) {
   return apiRequest("/auth/logout", {
     method: "POST",
     token,
