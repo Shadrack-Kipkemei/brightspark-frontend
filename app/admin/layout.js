@@ -1,8 +1,10 @@
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminHeader from "@/components/admin/AdminHeader";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
 export default function AdminLayout({ children }) {
   return (
+    <ProtectedRoute allowedRoles={["admin"]}>
     <div className="flex min-h-screen bg-gray-50">
 
       <AdminSidebar />
@@ -18,5 +20,6 @@ export default function AdminLayout({ children }) {
       </div>
 
     </div>
+    </ProtectedRoute>
   );
 }
