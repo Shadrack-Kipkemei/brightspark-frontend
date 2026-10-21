@@ -24,104 +24,131 @@ import {
 
 const AuthContext = createContext(null);
 
-
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  /**
-   * Restore authentication when the application starts.
+  /*
+   * Clear all authentication information
+   * from both React state and localStorage.
    */
-  useEffect(() => {
-    restoreAuthentication();
-  }, []);
+  const clearAuthentication = () => {
+    clearAuthData();
+    setToken(null);
+    setUser(null);
+  };
 
-  /**
-   * Restore the user's authentication session.
+  /*
+   * Restore the user's authentication when
+   * the application is opened/refreshed.
    */
   const restoreAuthentication = async () => {
-    try {
-      const savedToken = getAccessToken();
-      const savedUser = getStoredUser();
+    const savedAccessToken = getAccessToken();
+    const savedRefreshToken = getRefreshToken();
+    const savedUser = getStoredUser();
 
-      // No saved token means the user is not logged in.
-      if (!savedToken) {
+    /*
+     * No access token means the user is not logged in.
+     */
+    if (!savedAccessToken) {
+      setLoading(false);
+      return;
+    }
+
+    /*
+     * Immediately restore the saved values while
+     * we verify the access token with the backend.
+     */
+    setToken(savedAccessToken);
+    setUser(savedUser);
+
+    /*
+     * First try the existing access token.
+     */
+    try {
+      const response = await getCurrentUser(savedAccessToken);
+
+      if (response?.user) {
+        setUser(response.user);
+
+        /*
+         * Keep localStorage synchronized with the
+         * latest user information from the backend.
+         */
+        if (savedRefreshToken) {
+          saveAuthData({
+            accessToken: savedAccessToken,
+            refreshToken: savedRefreshToken,
+            user: response.user,
+          });
+        }
+
         setLoading(false);
         return;
       }
-
-      setToken(savedToken);
-      setUser(savedUser);
-
-      try {
-        // Verify the access token with the Flask backend.
-        const response = await getCurrentUser(savedToken);
-
-        if (response?.user) {
-          setUser(response.user);
-
-          // Update the stored user information.
-          const refreshToken = getRefreshToken();
-
-          if (refreshToken) {
-            saveAuthData({
-              accessToken: savedToken,
-              refreshToken,
-              user: response.user,
-            });
-          }
-        }
-      } catch (error) {
-        console.warn(
-          "Access token verification failed:",
-          error.message
-        );
-
-        // Try to refresh the access token.
-        const savedRefreshToken = getRefreshToken();
-
-        if (savedRefreshToken) {
-          try {
-            const refreshResponse =
-              await refreshAccessToken(savedRefreshToken);
-
-            if (refreshResponse?.access_token) {
-              const refreshedUser =
-                getStoredUser();
-
-              setToken(
-                refreshResponse.access_token
-              );
-
-              setUser(refreshedUser);
-
-              saveAuthData({
-                accessToken:
-                  refreshResponse.access_token,
-                refreshToken:
-                  savedRefreshToken,
-                user: refreshedUser,
-              });
-            } else {
-              clearAuthentication();
-            }
-          } catch (refreshError) {
-            console.warn(
-              "Refresh token failed:",
-              refreshError.message
-            );
-
-            clearAuthentication();
-          }
-        } else {
-          clearAuthentication();
-        }
-      }
     } catch (error) {
-      console.error(
-        "Unable to restore authentication:",
-        error
+      console.warn(
+        "Access token verification failed:",
+        error.message
+      );
+    }
+
+    /*
+     * If the access token has expired, use the
+     * refresh token to obtain a new access token.
+     */
+    if (!savedRefreshToken) {
+      clearAuthentication();
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const refreshResponse =
+        await refreshAccessToken(savedRefreshToken);
+
+      /*
+       * The backend returns:
+       *
+       * {
+       *   access_token: "..."
+       * }
+       */
+      const newAccessToken =
+        refreshResponse?.access_token;
+
+      if (!newAccessToken) {
+        throw new Error(
+          "Refresh response did not contain an access token."
+        );
+      }
+
+      /*
+       * Verify the new access token and retrieve
+       * the current user.
+       */
+      const userResponse =
+        await getCurrentUser(newAccessToken);
+
+      if (!userResponse?.user) {
+        throw new Error(
+          "Unable to retrieve the authenticated user."
+        );
+      }
+
+      saveAuthData({
+        accessToken: newAccessToken,
+        refreshToken: savedRefreshToken,
+        user: userResponse.user,
+      });
+
+      setToken(newAccessToken);
+      setUser(userResponse.user);
+    } catch (error) {
+      console.warn(
+        "Refresh token failed:",
+        error.message
       );
 
       clearAuthentication();
@@ -130,8 +157,15 @@ export function AuthProvider({ children }) {
     }
   };
 
-  /**
-   * Login using the Flask backend.
+  /*
+   * Restore authentication when the provider loads.
+   */
+  useEffect(() => {
+    restoreAuthentication();
+  }, []);
+
+  /*
+   * Login user.
    */
   const login = async (email, password) => {
     const response = await loginUser(
@@ -139,30 +173,65 @@ export function AuthProvider({ children }) {
       password
     );
 
+    /*
+     * IMPORTANT:
+     *
+     * The backend returns tokens inside:
+     *
+     * response.tokens.access_token
+     * response.tokens.refresh_token
+     */
+    const accessToken =
+      response?.tokens?.access_token;
+
+    const refreshToken =
+      response?.tokens?.refresh_token;
+
+    const authenticatedUser =
+      response?.user;
+
+    if (!accessToken) {
+      throw new Error(
+        "Login succeeded but no access token was returned."
+      );
+    }
+
+    if (!refreshToken) {
+      throw new Error(
+        "Login succeeded but no refresh token was returned."
+      );
+    }
+
+    if (!authenticatedUser) {
+      throw new Error(
+        "Login succeeded but no user information was returned."
+      );
+    }
+
+    /*
+     * Save the correct tokens and user information.
+     */
     saveAuthData({
-      accessToken: response.access_token,
-      refreshToken: response.refresh_token,
-      user: response.user,
+      accessToken,
+      refreshToken,
+      user: authenticatedUser,
     });
 
-    setToken(response.access_token);
-    setUser(response.user);
+    /*
+     * Update React state immediately.
+     */
+    setToken(accessToken);
+    setUser(authenticatedUser);
 
-    return response;
+    return {
+      ...response,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    };
   };
 
-  /**
-   * Clear the current authentication session.
-   */
-  const clearAuthentication = () => {
-    clearAuthData();
-
-    setToken(null);
-    setUser(null);
-  };
-
-  /**
-   * Logout from the Flask backend and clear local authentication data.
+  /*
+   * Logout user.
    */
   const logout = async () => {
     const currentToken = getAccessToken();
@@ -181,7 +250,8 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const isAuthenticated = Boolean(token);
+  const isAuthenticated =
+    Boolean(token && user);
 
   return (
     <AuthContext.Provider
