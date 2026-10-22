@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/components/cart/CartContext";
+import apiRequest from "@/lib/apiClient";
+
+
+// Branch IDs must match the IDs in the Flask database.
+const BRANCH_IDS = {
+  roysambu: "98980b28-48ad-427c-8d5e-5e8a7885d534",
+  rangau: "3517a3e0-71d1-4956-b427-29c2a3fdecc2",
+};
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -11,6 +19,7 @@ export default function CheckoutPage() {
   const {
     cartItems,
     cartSubtotal,
+    clearCart,
   } = useCart();
 
   const [formData, setFormData] = useState({
@@ -24,6 +33,8 @@ export default function CheckoutPage() {
   });
 
   const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("")
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -67,51 +78,124 @@ export default function CheckoutPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
+
+    setSubmitError("");
+
+    if (submitting) {
+      return;
+    }
 
     if (!validateForm()) {
       return;
     }
 
-    /*
-      For now we are only demonstrating the frontend flow.
+    if (cartItems.length === 0) {
+      setSubmitError(
+        "Your cart is empty. Please add products before checking out."
+      );
+      return;
+    }
 
-      Later this data will be sent to:
+    const selectedBranchId = formData.branch;
 
-      Next.js
-          ↓
-      Flask REST API
-          ↓
-      PostgreSQL
-    */
+    if (!selectedBranchId) {
+      setSubmitError("Please select a valid branch.");
+      return;
+    }
 
-    const orderData = {
-      customer: {
-        fullName: formData.fullName,
-        phone: formData.phone,
-        email: formData.email,
-      },
+    // Every item in an order must belong to the selected branch.
+    const hasWrongBranch = cartItems.some((item) => {
+      const itemBranchId =
+        item.branch_id || item.selected_branch_id;
 
-      branch: formData.branch,
+      return (
+        !itemBranchId ||
+        itemBranchId !== selectedBranchId
+      );
+    });
 
-      orderType: formData.orderType,
+    if (hasWrongBranch) {
+      setSubmitError(
+        "Your cart contains products from another branch or products without a branch. Please return to your cart and select products from the same branch."
+      );
+      return;
+    }
 
-      address:
+    // Send only product IDs and quantities.
+    // The backend calculates prices and validates stock.
+    const orderPayload = {
+      branch_id: selectedBranchId,
+      customer_name: formData.fullName.trim(),
+      customer_phone: formData.phone.trim(),
+      customer_email: formData.email.trim() || null,
+      fulfilment_method:
         formData.orderType === "delivery"
-          ? formData.address
+          ? "DELIVERY"
+          : "PICKUP",
+      delivery_address:
+        formData.orderType === "delivery"
+          ? formData.address.trim()
           : null,
-
-      notes: formData.notes,
-
-      items: cartItems,
-
-      subtotal: cartSubtotal,
+      customer_notes: formData.notes.trim() || null,
+      items: cartItems.map((item) => ({
+        product_id: item.product_id || item.id,
+        quantity: Number(item.quantity),
+      })),
     };
 
-    console.log("Order data:", orderData);
+    setSubmitting(true);
 
-    router.push("/checkout/success");
+    try {
+      const response = await apiRequest(
+        "/customer-orders",
+        {
+          method: "POST",
+          body: orderPayload,
+        }
+      );
+
+      // Support either a wrapped order response or a direct order response.
+      const order = response?.order || response?.data || response;
+
+      const orderReference =
+        order?.order_reference ||
+        response?.order_reference;
+
+      if (!orderReference) {
+        // Do not clear the cart if the response does not
+        // contain the expected reference.
+        throw new Error(
+          "The order response did not include an order reference. Please check your orders before trying again."
+        );
+      }
+
+      // Save the reference for the success page.
+      // This is a fallback in addition to the URL parameter.
+      sessionStorage.setItem(
+        "brightspark-last-order-reference",
+        orderReference
+      );
+
+      // Clear the cart only after a successful API response.
+      clearCart();
+
+      router.push(
+        `/checkout/success?reference=${encodeURIComponent(
+          orderReference
+        )}`
+      );
+    } catch (error) {
+      console.error("Checkout submission failed:", error);
+
+      setSubmitError(
+        error.message ||
+        "We could not submit your order. Please try again."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (cartItems.length === 0) {
@@ -170,6 +254,15 @@ export default function CheckoutPage() {
 
         </div>
 
+        {submitError && (
+          <div
+            role="alert"
+            className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          >
+            {submitError}
+          </div>
+        )}
+
         <form
           onSubmit={handleSubmit}
           className="grid gap-8 lg:grid-cols-[1fr_380px]"
@@ -204,11 +297,10 @@ export default function CheckoutPage() {
                     value={formData.fullName}
                     onChange={handleChange}
                     placeholder="Enter your full name"
-                    className={`w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/20 ${
-                      errors.fullName
-                        ? "border-red-500"
-                        : "border-gray-300"
-                    }`}
+                    className={`w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/20 ${errors.fullName
+                      ? "border-red-500"
+                      : "border-gray-300"
+                      }`}
                   />
 
                   {errors.fullName && (
@@ -236,11 +328,10 @@ export default function CheckoutPage() {
                     value={formData.phone}
                     onChange={handleChange}
                     placeholder="07XX XXX XXX"
-                    className={`w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/20 ${
-                      errors.phone
-                        ? "border-red-500"
-                        : "border-gray-300"
-                    }`}
+                    className={`w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/20 ${errors.phone
+                      ? "border-red-500"
+                      : "border-gray-300"
+                      }`}
                   />
 
                   {errors.phone && (
@@ -293,19 +384,18 @@ export default function CheckoutPage() {
 
                 {/* Roysambu */}
                 <label
-                  className={`cursor-pointer rounded-xl border p-5 transition ${
-                    formData.branch === "roysambu"
-                      ? "border-[#02337D] bg-[#02337D]/5 ring-2 ring-[#02337D]/20"
-                      : "border-gray-300 hover:border-[#02337D]"
-                  }`}
+                  className={`cursor-pointer rounded-xl border p-5 transition ${formData.branch === BRANCH_IDS.roysambu
+                    ? "border-[#02337D] bg-[#02337D]/5 ring-2 ring-[#02337D]/20"
+                    : "border-gray-300 hover:border-[#02337D]"
+                    }`}
                 >
 
                   <input
                     type="radio"
                     name="branch"
-                    value="roysambu"
+                    value={BRANCH_IDS.roysambu}
                     checked={
-                      formData.branch === "roysambu"
+                      formData.branch === BRANCH_IDS.roysambu
                     }
                     onChange={handleChange}
                     className="sr-only"
@@ -335,19 +425,18 @@ export default function CheckoutPage() {
 
                 {/* Rangau */}
                 <label
-                  className={`cursor-pointer rounded-xl border p-5 transition ${
-                    formData.branch === "rangau"
-                      ? "border-[#02337D] bg-[#02337D]/5 ring-2 ring-[#02337D]/20"
-                      : "border-gray-300 hover:border-[#02337D]"
-                  }`}
+                  className={`cursor-pointer rounded-xl border p-5 transition ${formData.branch === BRANCH_IDS.rangau
+                    ? "border-[#02337D] bg-[#02337D]/5 ring-2 ring-[#02337D]/20"
+                    : "border-gray-300 hover:border-[#02337D]"
+                    }`}
                 >
 
                   <input
                     type="radio"
                     name="branch"
-                    value="rangau"
+                    value={BRANCH_IDS.rangau}
                     checked={
-                      formData.branch === "rangau"
+                      formData.branch === BRANCH_IDS.rangau
                     }
                     onChange={handleChange}
                     className="sr-only"
@@ -396,11 +485,10 @@ export default function CheckoutPage() {
 
                 {/* Pickup */}
                 <label
-                  className={`block cursor-pointer rounded-xl border p-5 transition ${
-                    formData.orderType === "pickup"
-                      ? "border-[#FE7401] bg-[#FE7401]/5"
-                      : "border-gray-300"
-                  }`}
+                  className={`block cursor-pointer rounded-xl border p-5 transition ${formData.orderType === "pickup"
+                    ? "border-[#FE7401] bg-[#FE7401]/5"
+                    : "border-gray-300"
+                    }`}
                 >
 
                   <input
@@ -427,11 +515,10 @@ export default function CheckoutPage() {
 
                 {/* Delivery */}
                 <label
-                  className={`block cursor-pointer rounded-xl border p-5 transition ${
-                    formData.orderType === "delivery"
-                      ? "border-[#FE7401] bg-[#FE7401]/5"
-                      : "border-gray-300"
-                  }`}
+                  className={`block cursor-pointer rounded-xl border p-5 transition ${formData.orderType === "delivery"
+                    ? "border-[#FE7401] bg-[#FE7401]/5"
+                    : "border-gray-300"
+                    }`}
                 >
 
                   <input
@@ -476,11 +563,10 @@ export default function CheckoutPage() {
                     value={formData.address}
                     onChange={handleChange}
                     placeholder="Enter your delivery address"
-                    className={`w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/20 ${
-                      errors.address
-                        ? "border-red-500"
-                        : "border-gray-300"
-                    }`}
+                    className={`w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#02337D] focus:ring-2 focus:ring-[#02337D]/20 ${errors.address
+                      ? "border-red-500"
+                      : "border-gray-300"
+                      }`}
                   />
 
                   {errors.address && (
@@ -580,9 +666,10 @@ export default function CheckoutPage() {
 
             <button
               type="submit"
-              className="mt-6 w-full rounded-xl bg-[#FE7401] py-4 font-bold text-white transition hover:bg-[#D85F00]"
+              disabled={submitting}
+              className="mt-6 w-full rounded-xl bg-[#FE7401] py-4 font-bold text-white transition hover:bg-[#D85F00] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Place Order
+              {submitting ? "Submitting Order..." : "Place Order"}
             </button>
 
             <p className="mt-4 text-center text-xs text-gray-500">
