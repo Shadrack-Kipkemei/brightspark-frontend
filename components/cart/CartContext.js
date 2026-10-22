@@ -1,100 +1,244 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 const CartContext = createContext(null);
+
+const CART_STORAGE_KEY = "brightspark-cart";
 
 export function CartProvider({ children }) {
   const [cartItems, setCartItems] = useState([]);
 
-  // Load cart from browser storage
-  useEffect(() => {
-    const savedCart = localStorage.getItem("brightspark_cart");
+  /*
+   * This tells us whether the cart has already been
+   * loaded from localStorage.
+   *
+   * We MUST NOT save the initial [] value before
+   * localStorage has been checked.
+   */
+  const [cartLoaded, setCartLoaded] = useState(false);
 
-    if (savedCart) {
-      try {
-        setCartItems(JSON.parse(savedCart));
-      } catch (error) {
-        console.error("Could not load cart:", error);
+  /*
+   * Load the existing cart from localStorage.
+   *
+   * This runs once when the browser loads.
+   */
+  useEffect(() => {
+    try {
+      const savedCart = localStorage.getItem(
+        CART_STORAGE_KEY
+      );
+
+      if (savedCart) {
+        const parsedCart = JSON.parse(savedCart);
+
+        if (Array.isArray(parsedCart)) {
+          setCartItems(parsedCart);
+        }
       }
+    } catch (error) {
+      console.error(
+        "Failed to load cart from localStorage:",
+        error
+      );
+    } finally {
+      /*
+       * Only after loading do we allow the cart
+       * to start saving changes.
+       */
+      setCartLoaded(true);
     }
   }, []);
 
-  // Save cart whenever it changes
+  /*
+   * Save the cart whenever it changes.
+   *
+   * IMPORTANT:
+   * We wait until cartLoaded === true.
+   */
   useEffect(() => {
-    localStorage.setItem(
-      "brightspark_cart",
-      JSON.stringify(cartItems)
-    );
-  }, [cartItems]);
+    if (!cartLoaded) {
+      return;
+    }
 
-  const addToCart = (product, quantity = 1) => {
-    setCartItems((currentItems) => {
-      const existingItem = currentItems.find(
-        (item) => item.id === product.id
+    try {
+      localStorage.setItem(
+        CART_STORAGE_KEY,
+        JSON.stringify(cartItems)
       );
+    } catch (error) {
+      console.error(
+        "Failed to save cart to localStorage:",
+        error
+      );
+    }
+  }, [cartItems, cartLoaded]);
 
-      if (existingItem) {
-        return currentItems.map((item) =>
-          item.id === product.id
-            ? {
-                ...item,
-                quantity: Math.min(
-                  item.quantity + quantity,
-                  product.stock
-                ),
-              }
-            : item
+  /*
+   * Add a product to the cart.
+   *
+   * A product + branch combination is treated as
+   * one unique cart item.
+   */
+  const addToCart = (
+    product,
+    quantity = 1
+  ) => {
+    if (!product?.id) {
+      console.error(
+        "Cannot add product without an ID."
+      );
+      return;
+    }
+
+    const safeQuantity = Math.max(
+      1,
+      Number(quantity) || 1
+    );
+
+    const branchId =
+      product.branch_id ||
+      product.selected_branch_id ||
+      null;
+
+    setCartItems((currentItems) => {
+      const existingIndex =
+        currentItems.findIndex(
+          (item) =>
+            item.id === product.id &&
+            (item.branch_id || null) === branchId
         );
+
+      /*
+       * Product does not yet exist in this branch.
+       */
+      if (existingIndex === -1) {
+        return [
+          ...currentItems,
+          {
+            ...product,
+
+            quantity: safeQuantity,
+
+            branch_id: branchId,
+
+            branch_name:
+              product.branch_name || null,
+
+            branch_location:
+              product.branch_location || null,
+          },
+        ];
       }
 
-      return [
-        ...currentItems,
-        {
-          ...product,
-          quantity: Math.min(quantity, product.stock),
-        },
-      ];
+      /*
+       * Product already exists for this branch.
+       * Increase the existing quantity.
+       */
+      return currentItems.map(
+        (item, index) => {
+          if (index !== existingIndex) {
+            return item;
+          }
+
+          return {
+            ...item,
+            quantity:
+              (Number(item.quantity) || 0) +
+              safeQuantity,
+          };
+        }
+      );
     });
   };
 
-  const removeFromCart = (productId) => {
+  /*
+   * Remove a product from the cart.
+   *
+   * Product + branch are used to identify the item.
+   */
+  const removeFromCart = (
+    productId,
+    branchId = null
+  ) => {
     setCartItems((currentItems) =>
-      currentItems.filter((item) => item.id !== productId)
+      currentItems.filter(
+        (item) =>
+          !(
+            item.id === productId &&
+            (item.branch_id || null) ===
+              branchId
+          )
+      )
     );
   };
 
-  const updateQuantity = (productId, quantity) => {
+  /*
+   * Update quantity for a specific product
+   * at a specific branch.
+   */
+  const updateQuantity = (
+    productId,
+    quantity,
+    branchId = null
+  ) => {
+    const safeQuantity = Math.max(
+      1,
+      Number(quantity) || 1
+    );
+
     setCartItems((currentItems) =>
       currentItems.map((item) => {
-        if (item.id !== productId) {
-          return item;
+        if (
+          item.id === productId &&
+          (item.branch_id || null) ===
+            branchId
+        ) {
+          return {
+            ...item,
+            quantity: safeQuantity,
+          };
         }
 
-        const newQuantity = Math.max(
-          1,
-          Math.min(quantity, item.stock)
-        );
-
-        return {
-          ...item,
-          quantity: newQuantity,
-        };
+        return item;
       })
     );
   };
 
+  /*
+   * Remove everything from the cart.
+   */
   const clearCart = () => {
     setCartItems([]);
   };
 
+  /*
+   * Number of products in the cart.
+   */
   const cartCount = cartItems.reduce(
-    (total, item) => total + item.quantity,
+    (total, item) =>
+      total + (Number(item.quantity) || 0),
     0
   );
 
+  /*
+   * Total cart value.
+   */
   const cartSubtotal = cartItems.reduce(
-    (total, item) => total + item.price * item.quantity,
+    (total, item) => {
+      const price =
+        Number(item.price) || 0;
+
+      const quantity =
+        Number(item.quantity) || 0;
+
+      return total + price * quantity;
+    },
     0
   );
 
@@ -102,12 +246,12 @@ export function CartProvider({ children }) {
     <CartContext.Provider
       value={{
         cartItems,
-        cartCount,
-        cartSubtotal,
         addToCart,
         removeFromCart,
         updateQuantity,
         clearCart,
+        cartCount,
+        cartSubtotal,
       }}
     >
       {children}
