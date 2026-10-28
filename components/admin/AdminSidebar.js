@@ -15,6 +15,11 @@ const menuItems = [
     icon: "📦",
   },
   {
+    name: "Customer Orders",
+    href: "/admin/orders",
+    icon: "🛒",
+  },
+  {
     name: "Stock",
     href: "/admin/stock",
     icon: "🏪",
@@ -80,11 +85,10 @@ export default function AdminSidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                  isActive
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${isActive
                     ? "bg-[#02337D] text-white"
                     : "text-gray-600 hover:bg-gray-100 hover:text-[#02337D]"
-                }`}
+                  }`}
               >
 
                 <span className="text-lg">

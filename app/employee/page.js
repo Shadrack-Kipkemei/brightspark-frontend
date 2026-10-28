@@ -91,6 +91,13 @@ export default function EmployeeDashboard() {
             />
 
             <DashboardCard
+              title="Customer Orders"
+              description="View and manage customer orders"
+              href="/employee/orders"
+              icon="🛒"
+            />
+
+            <DashboardCard
               title="Record Sale"
               description="Record a customer sale"
               href="/employee/sales"
