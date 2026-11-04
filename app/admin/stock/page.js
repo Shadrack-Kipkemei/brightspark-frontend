@@ -1,17 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/components/auth/AuthContext";
+import apiRequest from "@/lib/apiClient";
 
-const BRANCHES = [
-  {
-    id: "roysambu",
-    name: "Roysambu",
-  },
-  {
-    id: "rangau",
-    name: "Rangau",
-  },
-];
+const EMPTY_BRANCH_STOCK = {
+  quantity: 0,
+  unitCost: 0,
+  sellingPrice: 0,
+};
 
 const UNITS = [
   "Piece",
@@ -25,213 +22,145 @@ const UNITS = [
   "Set",
 ];
 
-const INITIAL_PRODUCTS = [
-  {
-    id: 1,
-    name: "Electrical Extension Cable",
-    sku: "ELEC-EXT-001",
-    category: "Electrical",
-    unit: "Metre",
-    lowStockThreshold: 20,
-
-    branches: {
-      roysambu: {
-        quantity: 50,
-        unitCost: 55,
-        sellingPrice: 80,
-      },
-      rangau: {
-        quantity: 35,
-        unitCost: 57,
-        sellingPrice: 82,
-      },
-    },
-  },
-  {
-    id: 2,
-    name: "LED Bulb 12W",
-    sku: "LED-BULB-12",
-    category: "Lighting",
-    unit: "Piece",
-    lowStockThreshold: 10,
-
-    branches: {
-      roysambu: {
-        quantity: 20,
-        unitCost: 250,
-        sellingPrice: 350,
-      },
-      rangau: {
-        quantity: 8,
-        unitCost: 260,
-        sellingPrice: 370,
-      },
-    },
-  },
-  {
-    id: 3,
-    name: "Fast Charging USB Cable",
-    sku: "USB-CABLE-001",
-    category: "Phone Accessories",
-    unit: "Piece",
-    lowStockThreshold: 10,
-
-    branches: {
-      roysambu: {
-        quantity: 12,
-        unitCost: 350,
-        sellingPrice: 500,
-      },
-      rangau: {
-        quantity: 5,
-        unitCost: 360,
-        sellingPrice: 520,
-      },
-    },
-  },
-  {
-    id: 4,
-    name: "Rechargeable Emergency Lamp",
-    sku: "LAMP-EMG-001",
-    category: "Lighting",
-    unit: "Piece",
-    lowStockThreshold: 5,
-
-    branches: {
-      roysambu: {
-        quantity: 4,
-        unitCost: 1400,
-        sellingPrice: 1800,
-      },
-      rangau: {
-        quantity: 7,
-        unitCost: 1450,
-        sellingPrice: 1900,
-      },
-    },
-  },
-  {
-    id: 5,
-    name: "Phone Charger",
-    sku: "CHARGER-001",
-    category: "Phone Accessories",
-    unit: "Piece",
-    lowStockThreshold: 8,
-
-    branches: {
-      roysambu: {
-        quantity: 15,
-        unitCost: 550,
-        sellingPrice: 800,
-      },
-      rangau: {
-        quantity: 10,
-        unitCost: 580,
-        sellingPrice: 850,
-      },
-    },
-  },
-  {
-    id: 6,
-    name: "Digital Multimeter",
-    sku: "MULTI-001",
-    category: "Electrical",
-    unit: "Piece",
-    lowStockThreshold: 5,
-
-    branches: {
-      roysambu: {
-        quantity: 6,
-        unitCost: 1900,
-        sellingPrice: 2500,
-      },
-      rangau: {
-        quantity: 3,
-        unitCost: 2000,
-        sellingPrice: 2700,
-      },
-    },
-  },
-  {
-    id: 7,
-    name: "Electrical Socket",
-    sku: "SOCKET-001",
-    category: "Electrical",
-    unit: "Piece",
-    lowStockThreshold: 10,
-
-    branches: {
-      roysambu: {
-        quantity: 25,
-        unitCost: 300,
-        sellingPrice: 450,
-      },
-      rangau: {
-        quantity: 12,
-        unitCost: 310,
-        sellingPrice: 470,
-      },
-    },
-  },
-  {
-    id: 8,
-    name: "Bluetooth Speaker",
-    sku: "SPEAKER-001",
-    category: "Electronics",
-    unit: "Piece",
-    lowStockThreshold: 5,
-
-    branches: {
-      roysambu: {
-        quantity: 3,
-        unitCost: 2800,
-        sellingPrice: 3500,
-      },
-      rangau: {
-        quantity: 6,
-        unitCost: 2900,
-        sellingPrice: 3700,
-      },
-    },
-  },
-];
-
-const INITIAL_MOVEMENTS = [
-  {
-    id: 1,
-    date: "2026-10-01 09:30",
-    productName: "Electrical Extension Cable",
-    sku: "ELEC-EXT-001",
-    branch: "roysambu",
-    type: "STOCK_IN",
-    quantity: 50,
-    unit: "Metre",
-    unitCost: 55,
-    sellingPrice: 80,
-    reference: "PUR-001",
-    performedBy: "Administrator",
-    reason: "Opening stock",
-  },
-  {
-    id: 2,
-    date: "2026-10-01 10:15",
-    productName: "LED Bulb 12W",
-    sku: "LED-BULB-12",
-    branch: "rangau",
-    type: "STOCK_IN",
-    quantity: 8,
-    unit: "Piece",
-    unitCost: 260,
-    sellingPrice: 370,
-    reference: "PUR-002",
-    performedBy: "Administrator",
-    reason: "Supplier delivery",
-  },
-];
-
 export default function AdminInventoryPage() {
-  const [products, setProducts] = useState(INITIAL_PRODUCTS);
-  const [movements, setMovements] = useState(INITIAL_MOVEMENTS);
+  const { token, loading: authLoading } = useAuth();
+
+  const [products, setProducts] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [movements, setMovements] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const loadStockData = async () => {
+    if (!token) return;
+
+    setLoadError("");
+
+    try {
+      const [productResponse, branchResponse, movementResponse] =
+        await Promise.all([
+          apiRequest("/products", { token }),
+          apiRequest("/branches", { token }),
+          apiRequest("/inventory/movements", { token }),
+        ]);
+
+      const activeBranches = (branchResponse.branches || []).filter(
+        (item) => item.is_active
+      );
+
+      const activeProducts = (productResponse.products || []).filter(
+        (item) => item.is_active
+      );
+
+      const mappedProducts = await Promise.all(
+        activeProducts.map(async (product) => {
+          const branchPairs = await Promise.all(
+            activeBranches.map(async (branch) => {
+              const detail = await apiRequest(
+                `/inventory/product/${product.id}?branch_id=${encodeURIComponent(
+                  branch.id
+                )}`,
+                { token }
+              );
+
+              const batches = (detail.batches || []).filter(
+                (batch) =>
+                  batch.status === "ACTIVE" &&
+                  Number(batch.quantity_remaining) > 0
+              );
+
+              const quantity = batches.reduce(
+                (sum, batch) =>
+                  sum + Number(batch.quantity_remaining || 0),
+                0
+              );
+
+              const costValue = batches.reduce(
+                (sum, batch) =>
+                  sum +
+                  Number(batch.quantity_remaining || 0) *
+                  Number(batch.unit_cost || 0),
+                0
+              );
+
+              const sellingValue = batches.reduce(
+                (sum, batch) =>
+                  sum +
+                  Number(batch.quantity_remaining || 0) *
+                  Number(batch.selling_price || 0),
+                0
+              );
+
+              return [
+                branch.id,
+                {
+                  quantity,
+                  unitCost: quantity ? costValue / quantity : 0,
+                  sellingPrice: quantity
+                    ? sellingValue / quantity
+                    : 0,
+                },
+              ];
+            })
+          );
+
+          return {
+            id: product.id,
+            name: product.name,
+            sku: product.sku,
+            category: product.category,
+            unit: product.unit,
+            imageUrl: product.image_url,
+            lowStockThreshold: Number(
+              product.low_stock_threshold || 0
+            ),
+            branches: Object.fromEntries(branchPairs),
+          };
+        })
+      );
+
+      setBranches(activeBranches);
+      setProducts(mappedProducts);
+
+      setMovements(
+        (movementResponse.movements || []).map((movement) => ({
+          id: movement.id,
+          date: movement.created_at
+            ? new Date(movement.created_at).toLocaleString("en-KE")
+            : "—",
+          productName: movement.product?.name || "Unknown product",
+          sku: movement.product?.sku || "—",
+          branch: movement.branch_id,
+          type: movement.movement_type,
+          quantity: Number(movement.quantity || 0),
+          unit: movement.product?.unit || "",
+          unitCost: null,
+          sellingPrice: null,
+          reference: movement.reference || "—",
+          performedBy: movement.created_by || "—",
+          reason: movement.reason || "—",
+        }))
+      );
+    } catch (error) {
+      setLoadError(
+        error.message || "Unable to load stock information."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (token) {
+      loadStockData();
+    } else {
+      setLoading(false);
+    }
+  }, [token, authLoading]);
 
   const [activeTab, setActiveTab] = useState("stock");
 
@@ -239,9 +168,14 @@ export default function AdminInventoryPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
 
-  const [showAddStockModal, setShowAddStockModal] = useState(false);
-  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
-  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showAddStockModal, setShowAddStockModal] =
+    useState(false);
+
+  const [showAdjustmentModal, setShowAdjustmentModal] =
+    useState(false);
+
+  const [showTransferModal, setShowTransferModal] =
+    useState(false);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
 
@@ -292,16 +226,31 @@ export default function AdminInventoryPage() {
         branchFilter === "all" ||
         product.branches[branchFilter];
 
-      return matchesSearch && matchesCategory && matchesBranch;
+      return (
+        matchesSearch &&
+        matchesCategory &&
+        matchesBranch
+      );
     });
   }, [products, search, categoryFilter, branchFilter]);
+
+  const roysambuBranch = branches.find((item) =>
+    item.name.toLowerCase().includes("roysambu")
+  );
+
+  const rangauBranch = branches.find((item) =>
+    item.name.toLowerCase().includes("rangau")
+  );
 
   const totalStockUnits = useMemo(() => {
     return products.reduce((total, product) => {
       return (
         total +
-        product.branches.roysambu.quantity +
-        product.branches.rangau.quantity
+        Object.values(product.branches).reduce(
+          (branchTotal, stock) =>
+            branchTotal + Number(stock.quantity || 0),
+          0
+        )
       );
     }, 0);
   }, [products]);
@@ -310,10 +259,13 @@ export default function AdminInventoryPage() {
     return products.reduce((total, product) => {
       return (
         total +
-        product.branches.roysambu.quantity *
-          product.branches.roysambu.unitCost +
-        product.branches.rangau.quantity *
-          product.branches.rangau.unitCost
+        Object.values(product.branches).reduce(
+          (branchTotal, stock) =>
+            branchTotal +
+            Number(stock.quantity || 0) *
+            Number(stock.unitCost || 0),
+          0
+        )
       );
     }, 0);
   }, [products]);
@@ -322,8 +274,9 @@ export default function AdminInventoryPage() {
     const alerts = [];
 
     products.forEach((product) => {
-      BRANCHES.forEach((branch) => {
-        const branchStock = product.branches[branch.id];
+      branches.forEach((branch) => {
+        const branchStock =
+          product.branches[branch.id] || EMPTY_BRANCH_STOCK;
 
         if (
           branchStock.quantity <= product.lowStockThreshold
@@ -338,8 +291,7 @@ export default function AdminInventoryPage() {
     });
 
     return alerts;
-  }, [products]);
-
+  }, [products, branches]);
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("en-KE", {
       style: "currency",
@@ -354,7 +306,7 @@ export default function AdminInventoryPage() {
 
   const getBranchName = (branchId) => {
     return (
-      BRANCHES.find((branch) => branch.id === branchId)?.name ||
+      branches.find((branch) => branch.id === branchId)?.name ||
       branchId
     );
   };
@@ -366,6 +318,7 @@ export default function AdminInventoryPage() {
       ADJUSTMENT_OUT: "Adjustment Out",
       TRANSFER_IN: "Transfer In",
       TRANSFER_OUT: "Transfer Out",
+      DAMAGED: "Damaged Stock",
     };
 
     return labels[type] || type;
@@ -391,10 +344,10 @@ export default function AdminInventoryPage() {
       branchId,
       quantity: "",
       unitCost: product && branchId
-        ? String(product.branches[branchId].unitCost)
+        ? String((product.branches[branchId] || EMPTY_BRANCH_STOCK).unitCost)
         : "",
       sellingPrice: product && branchId
-        ? String(product.branches[branchId].sellingPrice)
+        ? String((product.branches[branchId] || EMPTY_BRANCH_STOCK).sellingPrice)
         : "",
       reason: "",
       reference: "",
@@ -403,108 +356,62 @@ export default function AdminInventoryPage() {
     setShowAddStockModal(true);
   };
 
-  const handleAddStock = (event) => {
+  const handleAddStock = async (event) => {
     event.preventDefault();
 
     const product = products.find(
-      (item) =>
-        String(item.id) === String(addStockForm.productId)
+      (item) => String(item.id) === String(addStockForm.productId)
     );
-
-    if (!product) {
-      alert("Please select a product.");
-      return;
-    }
-
-    if (!addStockForm.branchId) {
-      alert("Please select a branch.");
-      return;
-    }
+    if (!product) return alert("Please select a product.");
+    if (!addStockForm.branchId) return alert("Please select a branch.");
 
     const quantity = Number(addStockForm.quantity);
     const unitCost = Number(addStockForm.unitCost);
     const sellingPrice = Number(addStockForm.sellingPrice);
 
-    if (!quantity || quantity <= 0) {
-      alert("Enter a valid stock quantity.");
-      return;
+    if (!Number.isFinite(quantity) || quantity <= 0)
+      return alert("Enter a valid stock quantity.");
+    if (!Number.isFinite(unitCost) || unitCost < 0)
+      return alert("Enter a valid unit cost.");
+    if (!Number.isFinite(sellingPrice) || sellingPrice < 0)
+      return alert("Enter a valid selling price.");
+    if (!addStockForm.reason.trim())
+      return alert("Please enter the reason for adding stock.");
+
+    // Preserve the optional supplier reference in the movement reason.
+    const reasonText = addStockForm.reference.trim()
+      ? `${addStockForm.reason.trim()} (Supplier reference: ${addStockForm.reference.trim()})`
+      : addStockForm.reason.trim();
+
+    setSaving(true);
+    try {
+      await apiRequest("/inventory/receive", {
+        method: "POST",
+        token,
+        body: {
+          product_id: product.id,
+          branch_id: addStockForm.branchId,
+          quantity,
+          unit_cost: unitCost,
+          selling_price: sellingPrice,
+          reason: reasonText,
+        },
+      });
+
+      await loadStockData();
+
+      alert(
+        `Stock added successfully to ${getBranchName(addStockForm.branchId)}.`
+      );
+
+      resetAddStockForm();
+      setSelectedProduct(null);
+      setShowAddStockModal(false);
+    } catch (error) {
+      alert(error.message || "Unable to add stock.");
+    } finally {
+      setSaving(false);
     }
-
-    if (unitCost < 0 || !Number.isFinite(unitCost)) {
-      alert("Enter a valid unit cost.");
-      return;
-    }
-
-    if (sellingPrice < 0 || !Number.isFinite(sellingPrice)) {
-      alert("Enter a valid selling price.");
-      return;
-    }
-
-    if (!addStockForm.reason.trim()) {
-      alert("Please enter the reason for adding stock.");
-      return;
-    }
-
-    const branchId = addStockForm.branchId;
-
-    setProducts((currentProducts) =>
-      currentProducts.map((item) => {
-        if (item.id !== product.id) {
-          return item;
-        }
-
-        const oldBranch = item.branches[branchId];
-
-        return {
-          ...item,
-          branches: {
-            ...item.branches,
-            [branchId]: {
-              ...oldBranch,
-              quantity: oldBranch.quantity + quantity,
-
-              // New purchase cost for this branch
-              unitCost,
-
-              // New selling price for this branch
-              sellingPrice,
-            },
-          },
-        };
-      })
-    );
-
-    const movement = {
-      id: Date.now(),
-      date: new Date().toLocaleString("en-KE"),
-      productName: product.name,
-      sku: product.sku,
-      branch: branchId,
-      type: "STOCK_IN",
-      quantity,
-      unit: product.unit,
-      unitCost,
-      sellingPrice,
-      reference:
-        addStockForm.reference.trim() || "N/A",
-      performedBy: "Administrator",
-      reason: addStockForm.reason.trim(),
-    };
-
-    setMovements((currentMovements) => [
-      movement,
-      ...currentMovements,
-    ]);
-
-    alert(
-      `Stock added successfully to ${getBranchName(
-        branchId
-      )}.`
-    );
-
-    resetAddStockForm();
-    setSelectedProduct(null);
-    setShowAddStockModal(false);
   };
 
   const openAdjustmentModal = (product, branchId = "") => {
@@ -521,104 +428,93 @@ export default function AdminInventoryPage() {
     setShowAdjustmentModal(true);
   };
 
-  const handleAdjustment = (event) => {
+  const handleAdjustment = async (event) => {
     event.preventDefault();
 
     const product = products.find(
-      (item) =>
-        String(item.id) ===
-        String(adjustmentForm.productId)
+      (item) => String(item.id) === String(adjustmentForm.productId)
     );
-
-    if (!product) {
-      alert("Please select a product.");
-      return;
-    }
-
-    if (!adjustmentForm.branchId) {
-      alert("Please select a branch.");
-      return;
-    }
+    if (!product) return alert("Please select a product.");
+    if (!adjustmentForm.branchId) return alert("Please select a branch.");
 
     const quantity = Number(adjustmentForm.quantity);
 
-    if (!quantity || quantity <= 0) {
-      alert("Enter a valid quantity.");
-      return;
-    }
+    if (!Number.isFinite(quantity) || quantity <= 0)
+      return alert("Enter a valid quantity.");
 
-    if (!adjustmentForm.reason.trim()) {
-      alert("Please provide a reason.");
-      return;
-    }
+    if (!adjustmentForm.reason.trim())
+      return alert("Please provide a reason.");
 
     const branchId = adjustmentForm.branchId;
-    const currentQuantity =
-      product.branches[branchId].quantity;
+    const branchStock =
+      product.branches[branchId] || EMPTY_BRANCH_STOCK;
 
     if (
       adjustmentForm.type === "decrease" &&
-      quantity > currentQuantity
+      quantity > branchStock.quantity
     ) {
-      alert(
+      return alert(
         "You cannot remove more stock than is currently available."
       );
-      return;
     }
 
-    setProducts((currentProducts) =>
-      currentProducts.map((item) => {
-        if (item.id !== product.id) {
-          return item;
-        }
+    if (
+      adjustmentForm.type === "damaged" &&
+      quantity > branchStock.quantity
+    ) {
+      return alert(
+        "Damaged quantity cannot exceed available stock."
+      );
+    }
 
-        const branch = item.branches[branchId];
+    const isDamaged = adjustmentForm.type === "damaged";
+    const signedQuantity =
+      adjustmentForm.type === "decrease" ? -quantity : quantity;
 
-        const newQuantity =
-          adjustmentForm.type === "increase"
-            ? branch.quantity + quantity
-            : branch.quantity - quantity;
+    setSaving(true);
 
-        return {
-          ...item,
-          branches: {
-            ...item.branches,
-            [branchId]: {
-              ...branch,
-              quantity: newQuantity,
+    try {
+      await apiRequest(
+        isDamaged ? "/inventory/damage" : "/inventory/adjust",
+        {
+          method: "POST",
+          token,
+          body: isDamaged
+            ? {
+              product_id: product.id,
+              branch_id: branchId,
+              quantity,
+              reason: adjustmentForm.reason.trim(),
+            }
+            : {
+              product_id: product.id,
+              branch_id: branchId,
+              quantity: signedQuantity,
+              reason: adjustmentForm.reason.trim(),
+              ...(signedQuantity > 0
+                ? {
+                  unit_cost: branchStock.unitCost,
+                  selling_price: branchStock.sellingPrice,
+                }
+                : {}),
             },
-          },
-        };
-      })
-    );
+        }
+      );
 
-    setMovements((currentMovements) => [
-      {
-        id: Date.now(),
-        date: new Date().toLocaleString("en-KE"),
-        productName: product.name,
-        sku: product.sku,
-        branch: branchId,
-        type:
-          adjustmentForm.type === "increase"
-            ? "ADJUSTMENT_IN"
-            : "ADJUSTMENT_OUT",
-        quantity,
-        unit: product.unit,
-        unitCost:
-          product.branches[branchId].unitCost,
-        sellingPrice:
-          product.branches[branchId].sellingPrice,
-        reference: "ADJUSTMENT",
-        performedBy: "Administrator",
-        reason: adjustmentForm.reason.trim(),
-      },
-      ...currentMovements,
-    ]);
+      await loadStockData();
 
-    alert("Stock adjustment completed.");
+      alert(
+        isDamaged
+          ? "Damaged stock recorded successfully."
+          : "Stock adjustment completed."
+      );
 
-    setShowAdjustmentModal(false);
+      setShowAdjustmentModal(false);
+    } catch (error) {
+      alert(error.message || "Unable to adjust stock.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openTransferModal = (product) => {
@@ -635,146 +531,110 @@ export default function AdminInventoryPage() {
     setShowTransferModal(true);
   };
 
-  const handleTransfer = (event) => {
+  const handleTransfer = async (event) => {
     event.preventDefault();
 
     const product = products.find(
-      (item) =>
-        String(item.id) ===
-        String(transferForm.productId)
+      (item) => String(item.id) === String(transferForm.productId)
     );
 
-    if (!product) {
-      alert("Please select a product.");
-      return;
-    }
+    if (!product) return alert("Please select a product.");
+    if (!transferForm.fromBranch)
+      return alert("Select the source branch.");
+    if (!transferForm.toBranch)
+      return alert("Select the destination branch.");
 
-    if (!transferForm.fromBranch) {
-      alert("Select the source branch.");
-      return;
-    }
-
-    if (!transferForm.toBranch) {
-      alert("Select the destination branch.");
-      return;
-    }
-
-    if (
-      transferForm.fromBranch ===
-      transferForm.toBranch
-    ) {
-      alert(
+    if (transferForm.fromBranch === transferForm.toBranch) {
+      return alert(
         "Source and destination branches must be different."
       );
-      return;
     }
 
     const quantity = Number(transferForm.quantity);
 
-    if (!quantity || quantity <= 0) {
-      alert("Enter a valid quantity.");
-      return;
-    }
+    if (!Number.isFinite(quantity) || quantity <= 0)
+      return alert("Enter a valid quantity.");
 
     const sourceStock =
-      product.branches[transferForm.fromBranch].quantity;
+      product.branches[transferForm.fromBranch] || EMPTY_BRANCH_STOCK;
 
-    if (quantity > sourceStock) {
-      alert("There is not enough stock in the source branch.");
-      return;
+    if (quantity > sourceStock.quantity) {
+      return alert(
+        "There is not enough stock in the source branch."
+      );
     }
 
-    if (!transferForm.reason.trim()) {
-      alert("Please enter a transfer reason.");
-      return;
+    if (!transferForm.reason.trim())
+      return alert("Please enter a transfer reason.");
+
+    setSaving(true);
+
+    try {
+      const createResponse = await apiRequest("/transfers", {
+        method: "POST",
+        token,
+        body: {
+          source_branch_id: transferForm.fromBranch,
+          destination_branch_id: transferForm.toBranch,
+          items: [
+            {
+              product_id: product.id,
+              quantity,
+            },
+          ],
+          reason: transferForm.reason.trim(),
+        },
+      });
+
+      const transferId = createResponse.transfer?.id;
+
+      if (!transferId) {
+        throw new Error(
+          "Transfer was created, but the response did not include its ID. Refresh the transfers record before trying again."
+        );
+      }
+
+      await apiRequest(`/transfers/${transferId}/complete`, {
+        method: "PATCH",
+        token,
+      });
+
+      await loadStockData();
+
+      alert("Stock transfer completed successfully.");
+      setShowTransferModal(false);
+    } catch (error) {
+      // Reload in case the transfer was created but not completed.
+      await loadStockData();
+
+      alert(error.message || "Unable to complete stock transfer.");
+    } finally {
+      setSaving(false);
     }
-
-    const sourceBranch = transferForm.fromBranch;
-    const destinationBranch = transferForm.toBranch;
-
-    const sourceData = product.branches[sourceBranch];
-
-    setProducts((currentProducts) =>
-      currentProducts.map((item) => {
-        if (item.id !== product.id) {
-          return item;
-        }
-
-        return {
-          ...item,
-          branches: {
-            ...item.branches,
-
-            [sourceBranch]: {
-              ...item.branches[sourceBranch],
-              quantity:
-                item.branches[sourceBranch].quantity -
-                quantity,
-            },
-
-            [destinationBranch]: {
-              ...item.branches[destinationBranch],
-              quantity:
-                item.branches[destinationBranch].quantity +
-                quantity,
-
-              // Transfer existing stock cost and selling price
-              unitCost: sourceData.unitCost,
-              sellingPrice: sourceData.sellingPrice,
-            },
-          },
-        };
-      })
-    );
-
-    const reference = `TRF-${Date.now()}`;
-
-    const transferOut = {
-      id: Date.now(),
-      date: new Date().toLocaleString("en-KE"),
-      productName: product.name,
-      sku: product.sku,
-      branch: sourceBranch,
-      type: "TRANSFER_OUT",
-      quantity,
-      unit: product.unit,
-      unitCost: sourceData.unitCost,
-      sellingPrice: sourceData.sellingPrice,
-      reference,
-      performedBy: "Administrator",
-      reason: transferForm.reason.trim(),
-    };
-
-    const transferIn = {
-      id: Date.now() + 1,
-      date: new Date().toLocaleString("en-KE"),
-      productName: product.name,
-      sku: product.sku,
-      branch: destinationBranch,
-      type: "TRANSFER_IN",
-      quantity,
-      unit: product.unit,
-      unitCost: sourceData.unitCost,
-      sellingPrice: sourceData.sellingPrice,
-      reference,
-      performedBy: "Administrator",
-      reason: transferForm.reason.trim(),
-    };
-
-    setMovements((currentMovements) => [
-      transferIn,
-      transferOut,
-      ...currentMovements,
-    ]);
-
-    alert("Stock transfer completed.");
-
-    setShowTransferModal(false);
   };
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
+        {loading && (
+          <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-[#02337D]">
+            Loading live products, branches and stock from BrightSpark...
+          </div>
+        )}
+
+        {loadError && (
+          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {loadError}
+            <button
+              type="button"
+              onClick={loadStockData}
+              className="ml-3 font-bold underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* HEADER */}
         <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
           <div>
@@ -800,7 +660,6 @@ export default function AdminInventoryPage() {
             + Add Stock
           </button>
         </div>
-
         {/* SUMMARY */}
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
@@ -919,7 +778,7 @@ export default function AdminInventoryPage() {
                       All Branches
                     </option>
 
-                    {BRANCHES.map((branch) => (
+                    {branches.map((branch) => (
                       <option
                         key={branch.id}
                         value={branch.id}
@@ -1000,22 +859,20 @@ export default function AdminInventoryPage() {
                         <td className="px-5 py-4">
                           <BranchStock
                             stock={
-                              product.branches.roysambu
+                              product.branches[roysambuBranch?.id] ||
+                              EMPTY_BRANCH_STOCK
                             }
-                            threshold={
-                              product.lowStockThreshold
-                            }
+                            threshold={product.lowStockThreshold}
                           />
                         </td>
 
                         <td className="px-5 py-4">
                           <BranchStock
                             stock={
-                              product.branches.rangau
+                              product.branches[rangauBranch?.id] ||
+                              EMPTY_BRANCH_STOCK
                             }
-                            threshold={
-                              product.lowStockThreshold
-                            }
+                            threshold={product.lowStockThreshold}
                           />
                         </td>
 
@@ -1144,27 +1001,24 @@ export default function AdminInventoryPage() {
                       <td className="px-5 py-4">
                         <MovementBadge
                           type={movement.type}
-                          label={getMovementLabel(
-                            movement.type
-                          )}
+                          label={getMovementLabel(movement.type)}
                         />
                       </td>
 
                       <td className="px-5 py-4 text-sm font-semibold">
-                        {movement.quantity}{" "}
-                        {movement.unit}
+                        {movement.quantity} {movement.unit}
                       </td>
 
                       <td className="px-5 py-4 text-sm">
-                        {formatCurrency(
-                          movement.unitCost
-                        )}
+                        {movement.unitCost == null
+                          ? "—"
+                          : formatCurrency(movement.unitCost)}
                       </td>
 
                       <td className="px-5 py-4 text-sm">
-                        {formatCurrency(
-                          movement.sellingPrice
-                        )}
+                        {movement.sellingPrice == null
+                          ? "—"
+                          : formatCurrency(movement.sellingPrice)}
                       </td>
 
                       <td className="px-5 py-4 text-sm text-gray-600">
@@ -1176,7 +1030,6 @@ export default function AdminInventoryPage() {
                       </td>
                     </tr>
                   ))}
-
                   {movements.length === 0 && (
                     <tr>
                       <td
@@ -1301,24 +1154,11 @@ export default function AdminInventoryPage() {
                       key={product.id}
                       value={product.id}
                     >
-                      {product.name} — {product.sku}
+                      {product.name} ({product.sku})
                     </option>
                   ))}
                 </select>
               </div>
-
-              {/* SELECTED PRODUCT INFORMATION */}
-              {addStockForm.productId && (
-                <SelectedProductInfo
-                  product={products.find(
-                    (product) =>
-                      String(product.id) ===
-                      String(
-                        addStockForm.productId
-                      )
-                  )}
-                />
-              )}
 
               {/* BRANCH */}
               <div>
@@ -1328,42 +1168,12 @@ export default function AdminInventoryPage() {
 
                 <select
                   value={addStockForm.branchId}
-                  onChange={(event) => {
-                    const branchId =
-                      event.target.value;
-
-                    const product =
-                      products.find(
-                        (item) =>
-                          String(item.id) ===
-                          String(
-                            addStockForm.productId
-                          )
-                      );
-
+                  onChange={(event) =>
                     setAddStockForm((current) => ({
                       ...current,
-                      branchId,
-
-                      unitCost:
-                        product && branchId
-                          ? String(
-                              product.branches[
-                                branchId
-                              ].unitCost
-                            )
-                          : current.unitCost,
-
-                      sellingPrice:
-                        product && branchId
-                          ? String(
-                              product.branches[
-                                branchId
-                              ].sellingPrice
-                            )
-                          : current.sellingPrice,
-                    }));
-                  }}
+                      branchId: event.target.value,
+                    }))
+                  }
                   className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#02337D] focus:ring-2 focus:ring-blue-100"
                   required
                 >
@@ -1371,7 +1181,7 @@ export default function AdminInventoryPage() {
                     Select branch
                   </option>
 
-                  {BRANCHES.map((branch) => (
+                  {branches.map((branch) => (
                     <option
                       key={branch.id}
                       value={branch.id}
@@ -1390,8 +1200,8 @@ export default function AdminInventoryPage() {
 
                 <input
                   type="number"
-                  min="0.001"
-                  step="0.001"
+                  min="0.01"
+                  step="any"
                   value={addStockForm.quantity}
                   onChange={(event) =>
                     setAddStockForm((current) => ({
@@ -1399,177 +1209,63 @@ export default function AdminInventoryPage() {
                       quantity: event.target.value,
                     }))
                   }
-                  placeholder="e.g. 50"
+                  placeholder="Enter quantity"
                   className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#02337D] focus:ring-2 focus:ring-blue-100"
                   required
                 />
+              </div>
 
-                {addStockForm.productId && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    Unit:{" "}
-                    {
-                      products.find(
-                        (product) =>
-                          String(product.id) ===
-                          String(
-                            addStockForm.productId
-                          )
-                      )?.unit
+              {/* UNIT COST AND SELLING PRICE */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-gray-700">
+                    Unit Cost (KES)
+                  </label>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={addStockForm.unitCost}
+                    onChange={(event) =>
+                      setAddStockForm((current) => ({
+                        ...current,
+                        unitCost: event.target.value,
+                      }))
                     }
-                  </p>
-                )}
-              </div>
-
-              {/* UNIT COST + SELLING PRICE */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-gray-700">
-                    Unit Cost
-                  </label>
-
-                  <p className="mb-2 text-xs text-gray-500">
-                    Amount paid to the supplier per unit.
-                  </p>
-
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-500">
-                      KSh
-                    </span>
-
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={addStockForm.unitCost}
-                      onChange={(event) =>
-                        setAddStockForm((current) => ({
-                          ...current,
-                          unitCost:
-                            event.target.value,
-                        }))
-                      }
-                      placeholder="e.g. 55.00"
-                      className="w-full rounded-xl border border-gray-300 py-3 pl-14 pr-4 outline-none focus:border-[#02337D] focus:ring-2 focus:ring-blue-100"
-                      required
-                    />
-                  </div>
+                    placeholder="Purchase cost"
+                    className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#02337D] focus:ring-2 focus:ring-blue-100"
+                    required
+                  />
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-bold text-gray-700">
-                    Selling Price
+                    Selling Price (KES)
                   </label>
 
-                  <p className="mb-2 text-xs text-gray-500">
-                    Current intended selling price per unit.
-                  </p>
-
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-500">
-                      KSh
-                    </span>
-
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={addStockForm.sellingPrice}
-                      onChange={(event) =>
-                        setAddStockForm((current) => ({
-                          ...current,
-                          sellingPrice:
-                            event.target.value,
-                        }))
-                      }
-                      placeholder="e.g. 80.00"
-                      className="w-full rounded-xl border border-gray-300 py-3 pl-14 pr-4 outline-none focus:border-[#02337D] focus:ring-2 focus:ring-blue-100"
-                      required
-                    />
-                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={addStockForm.sellingPrice}
+                    onChange={(event) =>
+                      setAddStockForm((current) => ({
+                        ...current,
+                        sellingPrice: event.target.value,
+                      }))
+                    }
+                    placeholder="Selling price"
+                    className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#02337D] focus:ring-2 focus:ring-blue-100"
+                    required
+                  />
                 </div>
               </div>
 
-              {/* PURCHASE SUMMARY */}
-              {addStockForm.quantity &&
-                addStockForm.unitCost && (
-                  <div className="rounded-xl bg-blue-50 p-4">
-                    <p className="text-sm font-bold text-[#02337D]">
-                      Purchase Summary
-                    </p>
-
-                    <div className="mt-3 flex justify-between text-sm">
-                      <span className="text-gray-600">
-                        Quantity
-                      </span>
-
-                      <span className="font-semibold">
-                        {addStockForm.quantity}
-                      </span>
-                    </div>
-
-                    <div className="mt-2 flex justify-between text-sm">
-                      <span className="text-gray-600">
-                        Unit Cost
-                      </span>
-
-                      <span className="font-semibold">
-                        {formatCurrency(
-                          Number(
-                            addStockForm.unitCost
-                          )
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 border-t border-blue-200 pt-3">
-                      <div className="flex justify-between">
-                        <span className="font-bold text-gray-700">
-                          Total Purchase Cost
-                        </span>
-
-                        <span className="font-bold text-[#02337D]">
-                          {formatCurrency(
-                            Number(
-                              addStockForm.quantity
-                            ) *
-                              Number(
-                                addStockForm.unitCost
-                              )
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-              {/* REASON */}
+              {/* SUPPLIER REFERENCE */}
               <div>
                 <label className="mb-2 block text-sm font-bold text-gray-700">
-                  Reason
-                </label>
-
-                <textarea
-                  value={addStockForm.reason}
-                  onChange={(event) =>
-                    setAddStockForm((current) => ({
-                      ...current,
-                      reason: event.target.value,
-                    }))
-                  }
-                  rows="3"
-                  placeholder="e.g. New supplier delivery"
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#02337D] focus:ring-2 focus:ring-blue-100"
-                  required
-                />
-              </div>
-
-              {/* REFERENCE */}
-              <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">
-                  Supplier / Purchase Reference
-                  <span className="ml-1 font-normal text-gray-400">
-                    (Optional)
-                  </span>
+                  Supplier Reference (Optional)
                 </label>
 
                 <input
@@ -1578,41 +1274,61 @@ export default function AdminInventoryPage() {
                   onChange={(event) =>
                     setAddStockForm((current) => ({
                       ...current,
-                      reference:
-                        event.target.value,
+                      reference: event.target.value,
                     }))
                   }
-                  placeholder="e.g. INV-2026-001"
+                  placeholder="Invoice or receipt number"
                   className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#02337D] focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
-              {/* WARNING */}
-              <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
-                <p className="text-sm font-bold text-orange-800">
-                  Important
-                </p>
+              {/* REASON */}
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-700">
+                  Reason / Notes
+                </label>
 
-                <p className="mt-1 text-sm text-orange-700">
-                  This stock will be added to the selected
-                  branch. The entered unit cost and selling
-                  price will be recorded with this stock
-                  movement.
-                </p>
+                <textarea
+                  rows="3"
+                  value={addStockForm.reason}
+                  onChange={(event) =>
+                    setAddStockForm((current) => ({
+                      ...current,
+                      reason: event.target.value,
+                    }))
+                  }
+                  placeholder="Enter details about this stock receipt..."
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#02337D] focus:ring-2 focus:ring-blue-100"
+                  required
+                />
+              </div>
+
+              {/* ACTIONS */}
+              <div className="flex flex-col-reverse gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddStockModal(false);
+                    resetAddStockForm();
+                  }}
+                  className="rounded-xl border border-gray-300 px-5 py-3 font-bold text-gray-700 hover:bg-gray-50"
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-xl bg-[#FE7401] px-5 py-3 font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving ? "Saving..." : "Save Stock"}
+                </button>
               </div>
             </div>
-
-            <ModalFooter
-              onCancel={() => {
-                setShowAddStockModal(false);
-                resetAddStockForm();
-              }}
-              submitText="Add Stock"
-            />
           </form>
         </ModalShell>
       )}
-
       {/* ADJUSTMENT MODAL */}
       {showAdjustmentModal && (
         <ModalShell
@@ -1624,6 +1340,7 @@ export default function AdminInventoryPage() {
         >
           <form onSubmit={handleAdjustment}>
             <div className="space-y-5">
+              {/* PRODUCT */}
               <div>
                 <label className="mb-2 block text-sm font-bold text-gray-700">
                   Product
@@ -1655,6 +1372,7 @@ export default function AdminInventoryPage() {
                 </select>
               </div>
 
+              {/* BRANCH */}
               <div>
                 <label className="mb-2 block text-sm font-bold text-gray-700">
                   Branch
@@ -1675,7 +1393,7 @@ export default function AdminInventoryPage() {
                     Select branch
                   </option>
 
-                  {BRANCHES.map((branch) => (
+                  {branches.map((branch) => (
                     <option
                       key={branch.id}
                       value={branch.id}
@@ -1686,6 +1404,7 @@ export default function AdminInventoryPage() {
                 </select>
               </div>
 
+              {/* ADJUSTMENT TYPE */}
               <div>
                 <label className="mb-2 block text-sm font-bold text-gray-700">
                   Adjustment Type
@@ -1708,9 +1427,14 @@ export default function AdminInventoryPage() {
                   <option value="decrease">
                     Decrease Stock
                   </option>
+
+                  <option value="damaged">
+                    Record Damaged Stock
+                  </option>
                 </select>
               </div>
 
+              {/* QUANTITY */}
               <div>
                 <label className="mb-2 block text-sm font-bold text-gray-700">
                   Quantity
@@ -1732,6 +1456,7 @@ export default function AdminInventoryPage() {
                 />
               </div>
 
+              {/* REASON */}
               <div>
                 <label className="mb-2 block text-sm font-bold text-gray-700">
                   Reason
@@ -1758,6 +1483,7 @@ export default function AdminInventoryPage() {
                 setShowAdjustmentModal(false)
               }
               submitText="Save Adjustment"
+              disabled={saving}
             />
           </form>
         </ModalShell>
@@ -1774,6 +1500,7 @@ export default function AdminInventoryPage() {
         >
           <form onSubmit={handleTransfer}>
             <div className="space-y-5">
+              {/* PRODUCT */}
               <div>
                 <label className="mb-2 block text-sm font-bold text-gray-700">
                   Product
@@ -1805,6 +1532,7 @@ export default function AdminInventoryPage() {
                 </select>
               </div>
 
+              {/* SOURCE AND DESTINATION */}
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-bold text-gray-700">
@@ -1816,8 +1544,7 @@ export default function AdminInventoryPage() {
                     onChange={(event) =>
                       setTransferForm((current) => ({
                         ...current,
-                        fromBranch:
-                          event.target.value,
+                        fromBranch: event.target.value,
                       }))
                     }
                     className="w-full rounded-xl border border-gray-300 px-4 py-3"
@@ -1827,7 +1554,7 @@ export default function AdminInventoryPage() {
                       Select source
                     </option>
 
-                    {BRANCHES.map((branch) => (
+                    {branches.map((branch) => (
                       <option
                         key={branch.id}
                         value={branch.id}
@@ -1848,8 +1575,7 @@ export default function AdminInventoryPage() {
                     onChange={(event) =>
                       setTransferForm((current) => ({
                         ...current,
-                        toBranch:
-                          event.target.value,
+                        toBranch: event.target.value,
                       }))
                     }
                     className="w-full rounded-xl border border-gray-300 px-4 py-3"
@@ -1859,7 +1585,7 @@ export default function AdminInventoryPage() {
                       Select destination
                     </option>
 
-                    {BRANCHES.map((branch) => (
+                    {branches.map((branch) => (
                       <option
                         key={branch.id}
                         value={branch.id}
@@ -1871,6 +1597,7 @@ export default function AdminInventoryPage() {
                 </div>
               </div>
 
+              {/* QUANTITY */}
               <div>
                 <label className="mb-2 block text-sm font-bold text-gray-700">
                   Quantity
@@ -1893,6 +1620,7 @@ export default function AdminInventoryPage() {
                 />
               </div>
 
+              {/* REASON */}
               <div>
                 <label className="mb-2 block text-sm font-bold text-gray-700">
                   Reason
@@ -1919,6 +1647,7 @@ export default function AdminInventoryPage() {
                 setShowTransferModal(false)
               }
               submitText="Transfer Stock"
+              disabled={saving}
             />
           </form>
         </ModalShell>
@@ -1966,11 +1695,10 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`border-b-2 px-6 py-4 text-sm font-bold transition ${
-        active
+      className={`border-b-2 px-6 py-4 text-sm font-bold transition ${active
           ? "border-[#FE7401] text-[#02337D]"
           : "border-transparent text-gray-500 hover:text-[#02337D]"
-      }`}
+        }`}
     >
       {children}
     </button>
@@ -1986,11 +1714,10 @@ function BranchStock({
   return (
     <div>
       <p
-        className={`font-bold ${
-          isLow
+        className={`font-bold ${isLow
             ? "text-red-600"
             : "text-gray-900"
-        }`}
+          }`}
       >
         {stock.quantity}
       </p>
@@ -2018,32 +1745,26 @@ function MovementBadge({
   type,
   label,
 }) {
-  let classes =
-    "bg-gray-100 text-gray-700";
+  let classes = "bg-gray-100 text-gray-700";
 
   if (type === "STOCK_IN") {
-    classes =
-      "bg-green-100 text-green-700";
+    classes = "bg-green-100 text-green-700";
   }
 
   if (type === "ADJUSTMENT_IN") {
-    classes =
-      "bg-blue-100 text-blue-700";
+    classes = "bg-blue-100 text-blue-700";
   }
 
   if (type === "ADJUSTMENT_OUT") {
-    classes =
-      "bg-red-100 text-red-700";
+    classes = "bg-red-100 text-red-700";
   }
 
   if (type === "TRANSFER_IN") {
-    classes =
-      "bg-purple-100 text-purple-700";
+    classes = "bg-purple-100 text-purple-700";
   }
 
   if (type === "TRANSFER_OUT") {
-    classes =
-      "bg-orange-100 text-orange-700";
+    classes = "bg-orange-100 text-orange-700";
   }
 
   return (
@@ -2150,22 +1871,25 @@ function ModalShell({
 function ModalFooter({
   onCancel,
   submitText,
+  disabled = false,
 }) {
   return (
     <div className="mt-6 flex shrink-0 justify-end gap-3 border-t border-gray-200 bg-white pt-5">
       <button
         type="button"
         onClick={onCancel}
-        className="rounded-xl border border-gray-300 px-5 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+        disabled={disabled}
+        className="rounded-xl border border-gray-300 px-5 py-3 font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
       >
         Cancel
       </button>
 
       <button
         type="submit"
-        className="rounded-xl bg-[#FE7401] px-5 py-3 font-bold text-white hover:bg-orange-600"
+        disabled={disabled}
+        className="rounded-xl bg-[#FE7401] px-5 py-3 font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {submitText}
+        {disabled ? "Saving..." : submitText}
       </button>
     </div>
   );

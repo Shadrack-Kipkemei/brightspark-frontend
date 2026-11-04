@@ -62,9 +62,11 @@ export default function EmployeeDashboard() {
               <p className="mt-1 text-sm text-gray-500">
                 Branch:{" "}
                 <span className="font-semibold">
-                  {user.branch === "roysambu"
-                    ? "Roysambu"
-                    : "Rangau"}
+                  {user.branch_id === "98980b28-48ad-427c-8d5e-5e8a7885d534"
+                    ? "Roysambu Branch"
+                    : user.branch_id === "3517a3e0-71d1-4956-b427-29c2a3fdecc2"
+                      ?"Rangau Branch"
+                      : "Unassigned Branch"}
                 </span>
               </p>
 

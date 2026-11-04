@@ -1,86 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth/AuthContext";
+import apiRequest from "@/lib/apiClient";
 
 const BRAND = {
   navy: "#02337D",
   orange: "#FE7401",
 };
-
-const CURRENT_EMPLOYEE = {
-  id: "EMP-001",
-  name: "John Employee",
-  branch: "Roysambu",
-};
-
-const INITIAL_PRODUCTS = [
-  {
-    id: 1,
-    name: "Fast Charging USB Cable",
-    sku: "ACC-USB-001",
-    category: "Phone Accessories",
-    unit: "Piece",
-    costPrice: 300,
-    sellingPrice: 500,
-    lowStockThreshold: 5,
-    stock: 12,
-  },
-  {
-    id: 2,
-    name: "LED Bulb 12W",
-    sku: "LED-12W-001",
-    category: "Lighting",
-    unit: "Piece",
-    costPrice: 220,
-    sellingPrice: 350,
-    lowStockThreshold: 5,
-    stock: 20,
-  },
-  {
-    id: 3,
-    name: "Electrical Extension Cable",
-    sku: "CAB-EXT-001",
-    category: "Electrical",
-    unit: "Metre",
-    costPrice: 55,
-    sellingPrice: 80,
-    lowStockThreshold: 10,
-    stock: 50,
-  },
-  {
-    id: 4,
-    name: "Rechargeable Emergency Lamp",
-    sku: "LMP-EMG-001",
-    category: "Lighting",
-    unit: "Piece",
-    costPrice: 1200,
-    sellingPrice: 1800,
-    lowStockThreshold: 5,
-    stock: 4,
-  },
-  {
-    id: 5,
-    name: "Phone Charger",
-    sku: "CHR-001",
-    category: "Phone Accessories",
-    unit: "Piece",
-    costPrice: 500,
-    sellingPrice: 800,
-    lowStockThreshold: 5,
-    stock: 15,
-  },
-  {
-    id: 6,
-    name: "Digital Multimeter",
-    sku: "ELC-MUL-001",
-    category: "Electrical",
-    unit: "Piece",
-    costPrice: 1800,
-    sellingPrice: 2500,
-    lowStockThreshold: 3,
-    stock: 6,
-  },
-];
 
 function money(value) {
   return `KSh ${Number(value || 0).toLocaleString("en-KE", {
@@ -93,6 +21,7 @@ function Modal({ title, children, onClose, footer }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+
         {/* Fixed Header */}
         <div className="flex shrink-0 items-center justify-between border-b bg-white px-6 py-4">
           <h2
@@ -128,13 +57,24 @@ function Modal({ title, children, onClose, footer }) {
 }
 
 export default function EmployeeInventoryPage() {
-  const [products, setProducts] = useState(INITIAL_PRODUCTS);
+  const router = useRouter();
+
+  const {
+    user,
+    token,
+    loading: authLoading,
+    isAuthenticated,
+  } = useAuth();
+
+  const [products, setProducts] = useState([]);
+
+  const [loadingInventory, setLoadingInventory] = useState(true);
+  const [inventoryError, setInventoryError] = useState("");
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
 
   const [showStockModal, setShowStockModal] = useState(false);
-
   const [selectedProduct, setSelectedProduct] = useState(null);
 
   const [stockForm, setStockForm] = useState({
@@ -143,54 +83,197 @@ export default function EmployeeInventoryPage() {
     sellingPrice: "",
     reason: "",
   });
+  const [submittingStock, setSubmittingStock] = useState(false);
 
-  const categories = [
-    "All",
-    ...new Set(products.map((product) => product.category)),
-  ];
+  // =========================================================
+  // AUTHORIZATION
+  // =========================================================
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
+    if (!isAuthenticated || !user) {
+      router.replace("/login");
+      return;
+    }
+
+    if (user.role !== "employee") {
+      router.replace("/admin");
+    }
+  }, [
+    authLoading,
+    isAuthenticated,
+    user,
+    router,
+  ]);
+
+  // =========================================================
+  // LOAD REAL INVENTORY
+  // =========================================================
+
+  async function loadInventory() {
+    if (!token || !user) {
+      return;
+    }
+
+    try {
+      setLoadingInventory(true);
+      setInventoryError("");
+
+      const response = await apiRequest("/inventory", {
+        method: "GET",
+        token,
+      });
+
+      if (!response?.success) {
+        throw new Error(
+          response?.message ||
+          "Unable to load inventory."
+        );
+      }
+
+      setProducts(response.inventory || []);
+    } catch (error) {
+      console.error(
+        "Failed to load employee inventory:",
+        error
+      );
+
+      setInventoryError(
+        error.message ||
+        "Unable to load inventory."
+      );
+    } finally {
+      setLoadingInventory(false);
+    }
+  }
+
+  useEffect(() => {
+    if (
+      authLoading ||
+      !isAuthenticated ||
+      !user ||
+      user.role !== "employee" ||
+      !token
+    ) {
+      return;
+    }
+
+    loadInventory();
+  }, [
+    authLoading,
+    isAuthenticated,
+    user,
+    token,
+  ]);
+
+  // =========================================================
+  // CATEGORIES
+  // =========================================================
+
+  const categories = useMemo(() => {
+    return [
+      "All",
+      ...new Set(
+        products
+          .map((product) => product.category)
+          .filter(Boolean)
+      ),
+    ];
+  }, [products]);
+
+  // =========================================================
+  // FILTER PRODUCTS
+  // =========================================================
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
-      const searchValue = search.toLowerCase();
+      const searchValue = search
+        .toLowerCase()
+        .trim();
+
+      const productName = String(
+        product.name || ""
+      ).toLowerCase();
+
+      const sku = String(
+        product.sku || ""
+      ).toLowerCase();
 
       const matchesSearch =
-        product.name.toLowerCase().includes(searchValue) ||
-        product.sku.toLowerCase().includes(searchValue);
+        !searchValue ||
+        productName.includes(searchValue) ||
+        sku.includes(searchValue);
 
       const matchesCategory =
         category === "All" ||
         product.category === category;
 
-      return matchesSearch && matchesCategory;
+      return (
+        matchesSearch &&
+        matchesCategory
+      );
     });
-  }, [products, search, category]);
+  }, [
+    products,
+    search,
+    category,
+  ]);
 
-  const lowStockProducts = products.filter(
-    (product) =>
-      Number(product.stock) <=
-      Number(product.lowStockThreshold)
-  );
+  // =========================================================
+  // LOW STOCK
+  // =========================================================
 
-  const totalStockValue = products.reduce(
-    (sum, product) =>
-      sum +
-      Number(product.stock || 0) *
-        Number(product.costPrice || 0),
-    0
-  );
+  const lowStockProducts = useMemo(() => {
+    return products.filter(
+      (product) => product.is_low_stock
+    );
+  }, [products]);
+
+  // =========================================================
+  // STOCK VALUE
+  // =========================================================
+  //
+  // The inventory endpoint does not provide a single
+  // cost price for each product because a product can have
+  // multiple FIFO inventory batches with different costs.
+  //
+  // Therefore, we do not calculate stock value here yet.
+  //
+  // This will be handled properly when we integrate
+  // inventory batches and reporting.
+  // =========================================================
+
+  const totalStockQuantity = useMemo(() => {
+    return products.reduce(
+      (sum, product) =>
+        sum + Number(product.quantity || 0),
+      0
+    );
+  }, [products]);
+
+  // =========================================================
+  // OPEN STOCK MODAL
+  // =========================================================
 
   function openStockModal(product) {
     setSelectedProduct(product);
 
     setStockForm({
       quantity: "",
-      unitCost: product.costPrice.toString(),
-      sellingPrice: product.sellingPrice.toString(),
+      unitCost: "",
+      sellingPrice: "",
       reason: "",
     });
 
     setShowStockModal(true);
   }
+
+  // =========================================================
+  // CLOSE STOCK MODAL
+  // =========================================================
 
   function closeStockModal() {
     setShowStockModal(false);
@@ -203,9 +286,9 @@ export default function EmployeeInventoryPage() {
       reason: "",
     });
   }
-
-  function addStock() {
+  async function handleAddStock() {
     if (!selectedProduct) {
+      alert("Please select a product.");
       return;
     }
 
@@ -213,74 +296,118 @@ export default function EmployeeInventoryPage() {
     const unitCost = Number(stockForm.unitCost);
     const sellingPrice = Number(stockForm.sellingPrice);
 
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      alert("Enter a valid stock quantity.");
+    if (!stockForm.quantity || quantity <= 0) {
+      alert("Quantity must be greater than zero.");
       return;
     }
 
-    if (!Number.isFinite(unitCost) || unitCost < 0) {
-      alert("Enter a valid unit cost.");
+    if (stockForm.unitCost === "" || unitCost < 0) {
+      alert("Unit cost must be zero or greater.");
       return;
     }
 
-    if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
-      alert("Enter a valid selling price.");
+    if (stockForm.sellingPrice === "" || sellingPrice < 0) {
+      alert("Selling price must be zero or greater.");
       return;
     }
 
-    if (!stockForm.reason.trim()) {
-      alert("Enter the reason for adding stock.");
+    if (!token) {
+      alert("Your session has expired. Please log in again.");
       return;
     }
 
-    setProducts((prev) =>
-      prev.map((product) => {
-        if (product.id !== selectedProduct.id) {
-          return product;
-        }
+    try {
+      setSubmittingStock(true);
 
-        return {
-          ...product,
+      const response = await apiRequest("/inventory/receive", {
+        method: "POST",
+        token,
+        body: {
+          product_id: selectedProduct.product_id,
+          quantity,
+          unit_cost: unitCost,
+          selling_price: sellingPrice,
+          reason:
+            stockForm.reason.trim() || "New stock received",
+        },
+      });
 
-          // Add the new quantity
-          stock:
-            Number(product.stock) + quantity,
-
-          // New stock cost
-          costPrice: unitCost,
-
-          // New stock selling price
-          sellingPrice: sellingPrice,
-        };
-      })
-    );
-
-    /*
-      In production this information will be sent
-      to the Flask API and saved as an inventory batch:
-
-      {
-        product_id: selectedProduct.id,
-        branch_id: employee.branch,
-        quantity,
-        unit_cost: unitCost,
-        selling_price: sellingPrice,
-        reason: stockForm.reason,
-        received_by: CURRENT_EMPLOYEE.id
+      if (!response?.success) {
+        throw new Error(
+          response?.message || "Failed to receive stock."
+        );
       }
-    */
 
-    alert(
-      `${quantity} ${selectedProduct.unit} of ${selectedProduct.name} added successfully.`
-    );
+      alert(
+        response.message || "Stock received successfully."
+      );
 
-    closeStockModal();
+      closeStockModal();
+
+      await loadInventory();
+    } catch (error) {
+      console.error("Failed to add stock:", error);
+
+      alert(
+        error.message ||
+        "Something went wrong while adding stock."
+      );
+    } finally {
+      setSubmittingStock(false);
+    }
   }
+
+  // =========================================================
+  // AUTH / LOADING SCREEN
+  // =========================================================
+
+  if (
+    authLoading ||
+    !isAuthenticated ||
+    !user
+  ) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div
+            className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-[#02337D]"
+          />
+
+          <p className="text-gray-600">
+            Checking authentication...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user.role !== "employee") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-lg font-semibold text-red-600">
+            Access denied.
+          </p>
+
+          <p className="mt-1 text-gray-500">
+            This page is only available to employees.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================
+  // PAGE
+  // =========================================================
 
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* Page Header */}
+      {/* =====================================================
+          PAGE HEADER
+      ====================================================== */}
+
       <div className="border-b bg-white">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
@@ -322,7 +449,11 @@ export default function EmployeeInventoryPage() {
                   color: BRAND.navy,
                 }}
               >
-                {CURRENT_EMPLOYEE.branch}
+                {user.branch_id === "98980b28-48ad-427c-8d5e-5e8a7885d534"
+                  ? "Roysambu Branch"
+                  : user.branch_id === "3517a3e0-71d1-4956-b427-29c2a3fdecc2"
+                    ? "Rangau Branch"
+                    : "Unassigned Branch"}
               </p>
             </div>
 
@@ -332,62 +463,109 @@ export default function EmployeeInventoryPage() {
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
-        {/* Summary Cards */}
+        {/* ===================================================
+            ERROR
+        ==================================================== */}
+
+        {inventoryError && (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-5">
+
+            <h2 className="font-bold text-red-700">
+              Unable to Load Inventory
+            </h2>
+
+            <p className="mt-1 text-sm text-red-600">
+              {inventoryError}
+            </p>
+
+            <button
+              type="button"
+              onClick={loadInventory}
+              className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+            >
+              Try Again
+            </button>
+
+          </div>
+        )}
+
+        {/* ===================================================
+            SUMMARY CARDS
+        ==================================================== */}
+
         <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
 
           <SummaryCard
             title="Products"
-            value={products.length}
+            value={loadingInventory ? "..." : products.length}
           />
 
           <SummaryCard
             title="Low Stock"
-            value={lowStockProducts.length}
+            value={
+              loadingInventory
+                ? "..."
+                : lowStockProducts.length
+            }
           />
 
           <SummaryCard
-            title="Stock Value"
-            value={money(totalStockValue)}
+            title="Total Stock Quantity"
+            value={
+              loadingInventory
+                ? "..."
+                : totalStockQuantity.toLocaleString(
+                  "en-KE"
+                )
+            }
           />
 
         </div>
 
-        {/* Low Stock Alert */}
-        {lowStockProducts.length > 0 && (
-          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-5">
+        {/* ===================================================
+            LOW STOCK ALERT
+        ==================================================== */}
 
-            <h2 className="font-bold text-red-700">
-              Low Stock Alert
-            </h2>
+        {!loadingInventory &&
+          lowStockProducts.length > 0 && (
+            <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-5">
 
-            <p className="mt-1 text-sm text-red-600">
-              The following products need attention:
-            </p>
+              <h2 className="font-bold text-red-700">
+                Low Stock Alert
+              </h2>
 
-            <div className="mt-3 space-y-2">
+              <p className="mt-1 text-sm text-red-600">
+                The following products need attention:
+              </p>
 
-              {lowStockProducts.map((product) => (
-                <div
-                  key={product.id}
-                  className="flex flex-col justify-between gap-2 rounded-lg bg-white p-3 sm:flex-row sm:items-center"
-                >
+              <div className="mt-3 space-y-2">
 
-                  <span className="font-semibold">
-                    {product.name}
-                  </span>
+                {lowStockProducts.map((product) => (
+                  <div
+                    key={`${product.product_id}-${product.branch_id}`}
+                    className="flex flex-col justify-between gap-2 rounded-lg bg-white p-3 sm:flex-row sm:items-center"
+                  >
 
-                  <span className="font-bold text-red-600">
-                    {product.stock} {product.unit}
-                  </span>
+                    <span className="font-semibold">
+                      {product.name}
+                    </span>
 
-                </div>
-              ))}
+                    <span className="font-bold text-red-600">
+                      {product.quantity}{" "}
+                      {product.unit}
+                    </span>
 
+                  </div>
+                ))}
+
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Products Table */}
+        {/* ===================================================
+            PRODUCTS TABLE
+        ==================================================== */}
+
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
 
           {/* Search and Filter */}
@@ -411,7 +589,10 @@ export default function EmployeeInventoryPage() {
               className="rounded-xl border px-4 py-3 outline-none focus:border-[#02337D]"
             >
               {categories.map((item) => (
-                <option key={item} value={item}>
+                <option
+                  key={item}
+                  value={item}
+                >
                   {item}
                 </option>
               ))}
@@ -419,435 +600,409 @@ export default function EmployeeInventoryPage() {
 
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
+          {/* Loading */}
+          {loadingInventory ? (
+            <div className="flex min-h-[300px] items-center justify-center">
+              <div className="text-center">
 
-            <table className="min-w-[1100px] w-full">
+                <div
+                  className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-[#02337D]"
+                />
 
-              <thead className="bg-gray-50">
+                <p className="text-gray-500">
+                  Loading inventory...
+                </p>
 
-                <tr>
+              </div>
+            </div>
+          ) : (
 
-                  <th className="px-5 py-4 text-left">
-                    Product
-                  </th>
+            /* Table */
+            <div className="overflow-x-auto">
 
-                  <th className="px-5 py-4 text-left">
-                    SKU
-                  </th>
+              <table className="min-w-[1050px] w-full">
 
-                  <th className="px-5 py-4 text-left">
-                    Category
-                  </th>
-
-                  <th className="px-5 py-4 text-left">
-                    Unit
-                  </th>
-
-                  <th className="px-5 py-4 text-left">
-                    Stock
-                  </th>
-
-                  <th className="px-5 py-4 text-left">
-                    Unit Cost
-                  </th>
-
-                  <th className="px-5 py-4 text-left">
-                    Selling Price
-                  </th>
-
-                  <th className="px-5 py-4 text-left">
-                    Status
-                  </th>
-
-                  <th className="px-5 py-4 text-right">
-                    Action
-                  </th>
-
-                </tr>
-
-              </thead>
-
-              <tbody>
-
-                {filteredProducts.length === 0 ? (
+                <thead className="bg-gray-50">
 
                   <tr>
-                    <td
-                      colSpan="9"
-                      className="px-5 py-10 text-center text-gray-500"
-                    >
-                      No products found.
-                    </td>
+
+                    <th className="px-5 py-4 text-left">
+                      Product
+                    </th>
+
+                    <th className="px-5 py-4 text-left">
+                      SKU
+                    </th>
+
+                    <th className="px-5 py-4 text-left">
+                      Category
+                    </th>
+
+                    <th className="px-5 py-4 text-left">
+                      Unit
+                    </th>
+
+                    <th className="px-5 py-4 text-left">
+                      Stock
+                    </th>
+
+                    <th className="px-5 py-4 text-left">
+                      Low Stock Threshold
+                    </th>
+
+                    <th className="px-5 py-4 text-left">
+                      Status
+                    </th>
+
+                    <th className="px-5 py-4 text-right">
+                      Action
+                    </th>
+
                   </tr>
 
-                ) : (
+                </thead>
 
-                  filteredProducts.map((product) => {
+                <tbody>
 
-                    const lowStock =
-                      Number(product.stock) <=
-                      Number(product.lowStockThreshold);
+                  {filteredProducts.length === 0 ? (
 
-                    return (
-                      <tr
-                        key={product.id}
-                        className="border-t hover:bg-gray-50"
+                    <tr>
+                      <td
+                        colSpan="8"
+                        className="px-5 py-10 text-center text-gray-500"
                       >
+                        No products found.
+                      </td>
+                    </tr>
 
-                        <td className="px-5 py-4 font-semibold">
-                          {product.name}
-                        </td>
+                  ) : (
 
-                        <td className="px-5 py-4">
-                          {product.sku}
-                        </td>
+                    filteredProducts.map((product) => {
 
-                        <td className="px-5 py-4">
-                          {product.category}
-                        </td>
+                      const lowStock =
+                        product.is_low_stock;
 
-                        <td className="px-5 py-4">
-                          {product.unit}
-                        </td>
+                      return (
+                        <tr
+                          key={`${product.product_id}-${product.branch_id}`}
+                          className="border-t hover:bg-gray-50"
+                        >
 
-                        <td className="px-5 py-4 font-bold">
-                          {product.stock}
-                        </td>
+                          <td className="px-5 py-4 font-semibold">
+                            {product.name}
+                          </td>
 
-                        <td className="px-5 py-4">
-                          {money(product.costPrice)}
-                        </td>
+                          <td className="px-5 py-4">
+                            {product.sku}
+                          </td>
 
-                        <td className="px-5 py-4">
-                          {money(product.sellingPrice)}
-                        </td>
+                          <td className="px-5 py-4">
+                            {product.category}
+                          </td>
 
-                        <td className="px-5 py-4">
+                          <td className="px-5 py-4">
+                            {product.unit}
+                          </td>
 
-                          {lowStock ? (
+                          <td className="px-5 py-4 font-bold">
+                            {product.quantity}
+                          </td>
 
-                            <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
-                              LOW STOCK
-                            </span>
+                          <td className="px-5 py-4">
+                            {product.low_stock_threshold}
+                          </td>
 
-                          ) : (
+                          <td className="px-5 py-4">
 
-                            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                              IN STOCK
-                            </span>
+                            {lowStock ? (
 
-                          )}
+                              <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+                                LOW STOCK
+                              </span>
 
-                        </td>
+                            ) : (
 
-                        <td className="px-5 py-4 text-right">
+                              <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+                                IN STOCK
+                              </span>
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openStockModal(product)
-                            }
-                            className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                            style={{
-                              backgroundColor:
-                                BRAND.orange,
-                            }}
-                          >
-                            Add Stock
-                          </button>
+                            )}
 
-                        </td>
+                          </td>
 
-                      </tr>
-                    );
-                  })
+                          <td className="px-5 py-4 text-right">
 
-                )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openStockModal(product)
+                              }
+                              className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                              style={{
+                                backgroundColor:
+                                  BRAND.orange,
+                              }}
+                            >
+                              Add Stock
+                            </button>
 
-              </tbody>
+                          </td>
 
-            </table>
+                        </tr>
+                      );
+                    })
 
-          </div>
+                  )}
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          )}
 
         </section>
 
       </main>
 
-      {/* Add Stock Modal */}
-      {showStockModal && selectedProduct && (
+      {/* =====================================================
+          ADD STOCK MODAL
+          =====================================================
+          The form is intentionally preserved in this step.
+          API submission will be connected in 3P.7.2.
+      ====================================================== */}
 
-        <Modal
-          title={`Add Stock — ${selectedProduct.name}`}
-          onClose={closeStockModal}
-          footer={
+      {showStockModal &&
+        selectedProduct && (
 
-            <div className="flex justify-end gap-3">
+          <Modal
+            title={`Add Stock — ${selectedProduct.name}`}
+            onClose={closeStockModal}
+            footer={
 
-              <button
-                type="button"
-                onClick={closeStockModal}
-                className="rounded-xl border px-5 py-3"
-              >
-                Cancel
-              </button>
+              <div className="flex justify-end gap-3">
 
-              <button
-                type="button"
-                onClick={addStock}
-                className="rounded-xl px-5 py-3 font-semibold text-white"
-                style={{
-                  backgroundColor:
-                    BRAND.orange,
-                }}
-              >
-                Add Stock
-              </button>
+                <button
+                  type="button"
+                  onClick={closeStockModal}
+                  className="rounded-xl border px-5 py-3"
+                >
+                  Cancel
+                </button>
 
-            </div>
-
-          }
-        >
-
-          <div className="space-y-5">
-
-            {/* Product Information */}
-            <div className="rounded-xl bg-gray-50 p-4">
-
-              <p className="text-sm text-gray-500">
-                Product
-              </p>
-
-              <p
-                className="font-bold"
-                style={{
-                  color: BRAND.navy,
-                }}
-              >
-                {selectedProduct.name}
-              </p>
-
-              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-
-                <div>
-                  <p className="text-xs text-gray-500">
-                    SKU
-                  </p>
-
-                  <p className="font-semibold">
-                    {selectedProduct.sku}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs text-gray-500">
-                    Unit
-                  </p>
-
-                  <p className="font-semibold">
-                    {selectedProduct.unit}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs text-gray-500">
-                    Current Stock
-                  </p>
-
-                  <p className="font-semibold">
-                    {selectedProduct.stock}{" "}
-                    {selectedProduct.unit}
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleAddStock}
+                  disabled={submittingStock}
+                  className="rounded-xl px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  style={{
+                    backgroundColor: BRAND.orange,
+                  }}
+                > 
+                  {submittingStock ? "Adding stock..." : "Add stock"}
+                </button>
 
               </div>
 
-            </div>
+            }
+          >
 
-            {/* Current Prices */}
-            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+            <div className="space-y-5">
 
-              <h3
-                className="font-bold"
-                style={{
-                  color: BRAND.navy,
-                }}
-              >
-                Current Prices
-              </h3>
+              {/* Product Information */}
+              <div className="rounded-xl bg-gray-50 p-4">
 
-              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <p className="text-sm text-gray-500">
+                  Product
+                </p>
 
-                <div>
+                <p
+                  className="font-bold"
+                  style={{
+                    color: BRAND.navy,
+                  }}
+                >
+                  {selectedProduct.name}
+                </p>
 
-                  <p className="text-sm text-gray-500">
-                    Current Unit Cost
-                  </p>
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
 
-                  <p className="text-lg font-bold">
-                    {money(
-                      selectedProduct.costPrice
-                    )}
-                  </p>
+                  <div>
+                    <p className="text-xs text-gray-500">
+                      SKU
+                    </p>
 
-                </div>
+                    <p className="font-semibold">
+                      {selectedProduct.sku}
+                    </p>
+                  </div>
 
-                <div>
+                  <div>
+                    <p className="text-xs text-gray-500">
+                      Unit
+                    </p>
 
-                  <p className="text-sm text-gray-500">
-                    Current Selling Price
-                  </p>
+                    <p className="font-semibold">
+                      {selectedProduct.unit}
+                    </p>
+                  </div>
 
-                  <p className="text-lg font-bold">
-                    {money(
-                      selectedProduct.sellingPrice
-                    )}
-                  </p>
+                  <div>
+                    <p className="text-xs text-gray-500">
+                      Current Stock
+                    </p>
 
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* Quantity */}
-            <Input
-              label={`Quantity (${selectedProduct.unit})`}
-              type="number"
-              step="0.001"
-              min="0"
-              value={stockForm.quantity}
-              onChange={(value) =>
-                setStockForm((prev) => ({
-                  ...prev,
-                  quantity: value,
-                }))
-              }
-              placeholder={`Enter quantity in ${selectedProduct.unit.toLowerCase()}`}
-            />
-
-            {/* Unit Cost */}
-            <Input
-              label={`Unit Cost (${selectedProduct.unit})`}
-              type="number"
-              step="0.01"
-              min="0"
-              value={stockForm.unitCost}
-              onChange={(value) =>
-                setStockForm((prev) => ({
-                  ...prev,
-                  unitCost: value,
-                }))
-              }
-              placeholder="Enter purchase cost per unit"
-            />
-
-            <p className="-mt-3 text-xs text-gray-500">
-              Enter the actual cost you paid for this new stock.
-              This can be different from the previous unit cost.
-            </p>
-
-            {/* Selling Price */}
-            <Input
-              label={`Selling Price (${selectedProduct.unit})`}
-              type="number"
-              step="0.01"
-              min="0"
-              value={stockForm.sellingPrice}
-              onChange={(value) =>
-                setStockForm((prev) => ({
-                  ...prev,
-                  sellingPrice: value,
-                }))
-              }
-              placeholder="Enter intended selling price per unit"
-            />
-
-            <p className="-mt-3 text-xs text-gray-500">
-              This is the current/default selling price for the
-              new stock. At the point of sale, the employee can
-              still enter the actual negotiated selling price.
-            </p>
-
-            {/* Reason */}
-            <Input
-              label="Reason"
-              value={stockForm.reason}
-              onChange={(value) =>
-                setStockForm((prev) => ({
-                  ...prev,
-                  reason: value,
-                }))
-              }
-              placeholder="e.g. Supplier delivery"
-            />
-
-            {/* Preview */}
-            {Number(stockForm.quantity) > 0 &&
-              Number(stockForm.unitCost) >= 0 && (
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-
-                  <h3
-                    className="font-bold"
-                    style={{
-                      color: BRAND.navy,
-                    }}
-                  >
-                    Stock Receipt Summary
-                  </h3>
-
-                  <div className="mt-3 space-y-2 text-sm">
-
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">
-                        Quantity
-                      </span>
-
-                      <span className="font-semibold">
-                        {stockForm.quantity}{" "}
-                        {selectedProduct.unit}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">
-                        Unit Cost
-                      </span>
-
-                      <span className="font-semibold">
-                        {money(stockForm.unitCost)}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between border-t pt-2">
-                      <span className="font-semibold">
-                        Total Purchase Cost
-                      </span>
-
-                      <span
-                        className="font-bold"
-                        style={{
-                          color: BRAND.navy,
-                        }}
-                      >
-                        {money(
-                          Number(stockForm.quantity) *
-                            Number(stockForm.unitCost)
-                        )}
-                      </span>
-                    </div>
-
+                    <p className="font-semibold">
+                      {selectedProduct.quantity}{" "}
+                      {selectedProduct.unit}
+                    </p>
                   </div>
 
                 </div>
-              )}
 
-          </div>
+              </div>
 
-        </Modal>
+              {/* Quantity */}
+              <Input
+                label={`Quantity (${selectedProduct.unit})`}
+                type="number"
+                step="0.001"
+                min="0"
+                value={stockForm.quantity}
+                onChange={(value) =>
+                  setStockForm((prev) => ({
+                    ...prev,
+                    quantity: value,
+                  }))
+                }
+                placeholder={`Enter quantity in ${selectedProduct.unit.toLowerCase()}`}
+              />
 
-      )}
+              {/* Unit Cost */}
+              <Input
+                label={`Unit Cost (${selectedProduct.unit})`}
+                type="number"
+                step="0.01"
+                min="0"
+                value={stockForm.unitCost}
+                onChange={(value) =>
+                  setStockForm((prev) => ({
+                    ...prev,
+                    unitCost: value,
+                  }))
+                }
+                placeholder="Enter purchase cost per unit"
+              />
+
+              <p className="-mt-3 text-xs text-gray-500">
+                Enter the actual cost you paid for this new stock.
+                This can be different from previous stock.
+              </p>
+
+              {/* Selling Price */}
+              <Input
+                label={`Selling Price (${selectedProduct.unit})`}
+                type="number"
+                step="0.01"
+                min="0"
+                value={stockForm.sellingPrice}
+                onChange={(value) =>
+                  setStockForm((prev) => ({
+                    ...prev,
+                    sellingPrice: value,
+                  }))
+                }
+                placeholder="Enter intended selling price per unit"
+              />
+
+              <p className="-mt-3 text-xs text-gray-500">
+                This becomes the selling price for the new
+                inventory batch.
+              </p>
+
+              {/* Reason */}
+              <Input
+                label="Reason"
+                value={stockForm.reason}
+                onChange={(value) =>
+                  setStockForm((prev) => ({
+                    ...prev,
+                    reason: value,
+                  }))
+                }
+                placeholder="e.g. Supplier delivery"
+              />
+
+              {/* Preview */}
+              {Number(stockForm.quantity) > 0 &&
+                Number(stockForm.unitCost) >= 0 && (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+
+                    <h3
+                      className="font-bold"
+                      style={{
+                        color: BRAND.navy,
+                      }}
+                    >
+                      Stock Receipt Summary
+                    </h3>
+
+                    <div className="mt-3 space-y-2 text-sm">
+
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">
+                          Quantity
+                        </span>
+
+                        <span className="font-semibold">
+                          {stockForm.quantity}{" "}
+                          {selectedProduct.unit}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">
+                          Unit Cost
+                        </span>
+
+                        <span className="font-semibold">
+                          {money(stockForm.unitCost)}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between border-t pt-2">
+                        <span className="font-semibold">
+                          Total Purchase Cost
+                        </span>
+
+                        <span
+                          className="font-bold"
+                          style={{
+                            color: BRAND.navy,
+                          }}
+                        >
+                          {money(
+                            Number(
+                              stockForm.quantity
+                            ) *
+                            Number(
+                              stockForm.unitCost
+                            )
+                          )}
+                        </span>
+                      </div>
+
+                    </div>
+
+                  </div>
+                )}
+
+            </div>
+
+          </Modal>
+
+        )}
 
     </div>
   );
