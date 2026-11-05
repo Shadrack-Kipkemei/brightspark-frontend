@@ -1,128 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import apiRequest from "@/lib/apiClient";
+import { useAuth } from "@/components/auth/AuthContext";
 
 const BRAND = {
   navy: "#02337D",
   orange: "#FE7401",
 };
-
-const CURRENT_EMPLOYEE = {
-  id: "EMP-001",
-  name: "John Employee",
-  branch: "Roysambu",
-};
-
-const DEMO_PRODUCTS = [
-  {
-    id: 1,
-    name: "Fast Charging USB Cable",
-    sku: "ACC-USB-001",
-    category: "Phone Accessories",
-    unit: "Piece",
-    costPrice: 300,
-    stock: 12,
-  },
-  {
-    id: 2,
-    name: "LED Bulb 12W",
-    sku: "LED-12W-001",
-    category: "Lighting",
-    unit: "Piece",
-    costPrice: 220,
-    stock: 20,
-  },
-  {
-    id: 3,
-    name: "Electrical Extension Cable",
-    sku: "CAB-EXT-001",
-    category: "Electrical",
-    unit: "Metre",
-    costPrice: 55,
-    stock: 50,
-  },
-  {
-    id: 4,
-    name: "Rechargeable Emergency Lamp",
-    sku: "LMP-EMG-001",
-    category: "Lighting",
-    unit: "Piece",
-    costPrice: 1200,
-    stock: 4,
-  },
-  {
-    id: 5,
-    name: "Phone Charger",
-    sku: "CHR-001",
-    category: "Phone Accessories",
-    unit: "Piece",
-    costPrice: 500,
-    stock: 15,
-  },
-  {
-    id: 6,
-    name: "Digital Multimeter",
-    sku: "ELC-MUL-001",
-    category: "Electrical",
-    unit: "Piece",
-    costPrice: 1800,
-    stock: 6,
-  },
-  {
-    id: 7,
-    name: "Electrical Socket",
-    sku: "SOC-001",
-    category: "Electrical",
-    unit: "Piece",
-    costPrice: 280,
-    stock: 25,
-  },
-  {
-    id: 8,
-    name: "Bluetooth Speaker",
-    sku: "SPK-BT-001",
-    category: "Electronics",
-    unit: "Piece",
-    costPrice: 2500,
-    stock: 3,
-  },
-];
-
-const INITIAL_SALES = [
-  {
-    id: "SALE-001",
-    invoiceNumber: "BS-2026-0001",
-    branch: "Roysambu",
-    employee: "John Employee",
-    status: "COMPLETED",
-    totalAmount: 1527,
-    totalCost: 1100,
-    grossProfit: 427,
-    soldAt: "2026-09-30T10:15:00",
-    items: [
-      {
-        productId: 3,
-        productName: "Electrical Extension Cable",
-        sku: "CAB-EXT-001",
-        quantity: 20,
-        unit: "Metre",
-        costPrice: 55,
-        actualSellingPrice: 76.35,
-        total: 1527,
-      },
-    ],
-    payments: [
-      {
-        method: "M-Pesa",
-        amount: 1000,
-      },
-      {
-        method: "Cash",
-        amount: 527,
-      },
-    ],
-  },
-];
 
 function money(value) {
   return `KSh ${Number(value || 0).toLocaleString("en-KE", {
@@ -131,15 +16,52 @@ function money(value) {
   })}`;
 }
 
+function getErrorMessage(error) {
+  if (typeof error === "string") return error;
+  return error?.message || "Something went wrong. Please try again.";
+}
+
+function normalizeProduct(product) {
+  return {
+    ...product,
+    costPrice: Number(product.cost_price || 0),
+    stock: Number(product.available_stock || 0),
+  };
+}
+
+function normalizeSale(sale) {
+  return {
+    ...sale,
+    invoiceNumber: sale.id,
+    branchName: sale.branch?.name || "Assigned branch",
+    employeeName: sale.employee?.full_name || "Employee",
+    totalAmount: Number(sale.total_amount || 0),
+    soldAt: sale.sold_at || sale.created_at,
+    items: (sale.items || []).map((item) => ({
+      id: item.id,
+      productId: item.product_id,
+      productName: item.product?.name || "Product",
+      sku: item.product?.sku || "",
+      category: item.product?.category || "",
+      quantity: Number(item.quantity || 0),
+      unit: item.unit || "",
+      costPrice: Number(item.cost_price || 0),
+      actualSellingPrice: Number(item.actual_selling_price || 0),
+      total: Number(item.total || 0),
+    })),
+    payments: (sale.payments || []).map((payment) => ({
+      method: payment.payment_method,
+      amount: Number(payment.amount || 0),
+    })),
+  };
+}
+
 function Modal({ title, children, onClose, footer }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b px-6 py-4">
-          <h2
-            className="text-xl font-bold"
-            style={{ color: BRAND.navy }}
-          >
+          <h2 className="text-xl font-bold" style={{ color: BRAND.navy }}>
             {title}
           </h2>
 
@@ -166,14 +88,26 @@ function Modal({ title, children, onClose, footer }) {
 }
 
 export default function EmployeeSalesPage() {
-  const [sales, setSales] = useState(INITIAL_SALES);
+  const { token, loading: authLoading } = useAuth();
+
+  const [sales, setSales] = useState([]);
+  const [loadingSales, setLoadingSales] = useState(true);
+  const [pageError, setPageError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showRefundModal, setShowRefundModal] = useState(false);
 
+  const [savingSale, setSavingSale] = useState(false);
+  const [processingRefund, setProcessingRefund] = useState(false);
+
   const [selectedSale, setSelectedSale] = useState(null);
+  const [refundedQuantities, setRefundedQuantities] = useState({});
 
   const [search, setSearch] = useState("");
+  const [productResults, setProductResults] = useState([]);
+  const [searchingProducts, setSearchingProducts] = useState(false);
 
   const [saleForm, setSaleForm] = useState({
     product: null,
@@ -194,42 +128,102 @@ export default function EmployeeSalesPage() {
     mpesaAmount: "",
   });
 
-  const filteredProducts = useMemo(() => {
-    const query = saleForm.productSearch.trim().toLowerCase();
+  const loadSales = useCallback(async () => {
+    if (!token) return;
 
-    if (!query) return [];
+    setLoadingSales(true);
+    setPageError("");
 
-    return DEMO_PRODUCTS.filter(
-      (product) =>
-        product.name.toLowerCase().includes(query) ||
-        product.sku.toLowerCase().includes(query) ||
-        product.category.toLowerCase().includes(query)
-    );
-  }, [saleForm.productSearch]);
+    try {
+      const response = await apiRequest("/sales", {
+        method: "GET",
+        token,
+      });
 
-  const employeeSales = sales.filter(
-    (sale) => sale.employee === CURRENT_EMPLOYEE.name
-  );
+      setSales((response.sales || []).map(normalizeSale));
+    } catch (error) {
+      setPageError(getErrorMessage(error));
+    } finally {
+      setLoadingSales(false);
+    }
+  }, [token]);
 
-  const visibleSales = employeeSales.filter((sale) =>
-    `${sale.invoiceNumber} ${sale.items
-      .map((item) => item.productName)
-      .join(" ")}`
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    if (!authLoading && token) {
+      loadSales();
+    } else if (!authLoading && !token) {
+      setLoadingSales(false);
+      setPageError("Please log in to access employee sales.");
+    }
+  }, [authLoading, token, loadSales]);
+
+  // Search products using the employee's assigned branch.
+  useEffect(() => {
+    if (!token || !showSaleModal) return;
+
+    const query = saleForm.productSearch.trim();
+
+    if (!query || saleForm.product) {
+      setProductResults([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const timer = setTimeout(async () => {
+      setSearchingProducts(true);
+
+      try {
+        const response = await apiRequest(
+          `/sales/search-products?q=${encodeURIComponent(query)}`,
+          {
+            method: "GET",
+            token,
+          }
+        );
+
+        if (!cancelled) {
+          setProductResults(
+            (response.products || []).map(normalizeProduct)
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setProductResults([]);
+          setActionError(getErrorMessage(error));
+        }
+      } finally {
+        if (!cancelled) {
+          setSearchingProducts(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [saleForm.productSearch, saleForm.product, showSaleModal, token]);
+
+  const visibleSales = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) return sales;
+
+    return sales.filter((sale) => {
+      const productNames = sale.items
+        .map((item) => item.productName)
+        .join(" ");
+
+      return `${sale.id} ${sale.employeeName} ${productNames}`
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [sales, search]);
 
   const saleQuantity = Number(saleForm.quantity || 0);
   const salePrice = Number(saleForm.actualSellingPrice || 0);
-
   const saleTotal = saleQuantity * salePrice;
-
-  const saleCost =
-    saleForm.product && saleQuantity
-      ? saleQuantity * saleForm.product.costPrice
-      : 0;
-
-  const saleGrossProfit = saleTotal - saleCost;
 
   const paymentTotal =
     saleForm.paymentMethod === "Cash"
@@ -237,7 +231,31 @@ export default function EmployeeSalesPage() {
       : saleForm.paymentMethod === "M-Pesa"
         ? Number(saleForm.mpesaAmount || 0)
         : Number(saleForm.cashAmount || 0) +
-          Number(saleForm.mpesaAmount || 0);
+        Number(saleForm.mpesaAmount || 0);
+
+  const refundQuantity = Number(refundForm.quantity || 0);
+
+  const selectedItem = selectedSale?.items?.[0] || null;
+
+  const selectedItemRefunded = selectedItem
+    ? Number(refundedQuantities[selectedItem.id] || 0)
+    : 0;
+
+  const remainingRefundableQuantity = selectedItem
+    ? Math.max(0, selectedItem.quantity - selectedItemRefunded)
+    : 0;
+
+  const refundAmount = selectedItem
+    ? refundQuantity * selectedItem.actualSellingPrice
+    : 0;
+
+  const refundPaymentTotal =
+    refundForm.paymentMethod === "Cash"
+      ? Number(refundForm.cashAmount || 0)
+      : refundForm.paymentMethod === "M-Pesa"
+        ? Number(refundForm.mpesaAmount || 0)
+        : Number(refundForm.cashAmount || 0) +
+        Number(refundForm.mpesaAmount || 0);
 
   function resetSaleForm() {
     setSaleForm({
@@ -249,102 +267,134 @@ export default function EmployeeSalesPage() {
       cashAmount: "",
       mpesaAmount: "",
     });
+
+    setProductResults([]);
+    setActionError("");
   }
 
   function selectProduct(product) {
-    setSaleForm((prev) => ({
-      ...prev,
+    setSaleForm((previous) => ({
+      ...previous,
       product,
       productSearch: product.name,
     }));
+
+    setProductResults([]);
   }
 
   function changePaymentMethod(method) {
-    setSaleForm((prev) => ({
-      ...prev,
+    setSaleForm((previous) => ({
+      ...previous,
       paymentMethod: method,
       cashAmount: "",
       mpesaAmount: "",
     }));
   }
 
-  function recordSale() {
-    if (!saleForm.product) {
-      alert("Please select a product.");
-      return;
-    }
-
-    if (saleQuantity <= 0) {
-      alert("Enter a valid quantity.");
-      return;
-    }
-
-    if (saleQuantity > saleForm.product.stock) {
-      alert("Quantity exceeds available stock.");
-      return;
-    }
-
-    if (salePrice <= 0) {
-      alert("Enter the actual selling price.");
-      return;
-    }
-
-    if (Math.abs(paymentTotal - saleTotal) > 0.01) {
-      alert("Payment amounts must equal the sale total.");
-      return;
-    }
-
-    const newSale = {
-      id: `SALE-${Date.now()}`,
-      invoiceNumber: `BS-2026-${String(
-        sales.length + 1
-      ).padStart(4, "0")}`,
-      branch: CURRENT_EMPLOYEE.branch,
-      employee: CURRENT_EMPLOYEE.name,
-      status: "COMPLETED",
-      totalAmount: saleTotal,
-      totalCost: saleCost,
-      grossProfit: saleGrossProfit,
-      soldAt: new Date().toISOString(),
-      items: [
-        {
-          productId: saleForm.product.id,
-          productName: saleForm.product.name,
-          sku: saleForm.product.sku,
-          quantity: saleQuantity,
-          unit: saleForm.product.unit,
-          costPrice: saleForm.product.costPrice,
-          actualSellingPrice: salePrice,
-          total: saleTotal,
-        },
-      ],
-      payments:
-        saleForm.paymentMethod === "Split Payment"
-          ? [
-              {
-                method: "M-Pesa",
-                amount: Number(saleForm.mpesaAmount),
-              },
-              {
-                method: "Cash",
-                amount: Number(saleForm.cashAmount),
-              },
-            ]
-          : [
-              {
-                method: saleForm.paymentMethod,
-                amount: paymentTotal,
-              },
-            ],
-    };
-
-    setSales((prev) => [newSale, ...prev]);
-
+  function closeSaleModal() {
     resetSaleForm();
     setShowSaleModal(false);
   }
 
-  function openRefund(sale) {
+  function closeRefundModal() {
+    setShowRefundModal(false);
+    setSelectedSale(null);
+    setRefundedQuantities({});
+    setActionError("");
+  }
+  async function recordSale() {
+    setActionError("");
+    setSuccessMessage("");
+
+    if (!saleForm.product) {
+      setActionError("Please search for and select a product.");
+      return;
+    }
+
+    if (!saleQuantity || saleQuantity <= 0) {
+      setActionError("Enter a valid quantity.");
+      return;
+    }
+
+    if (saleQuantity > saleForm.product.stock) {
+      setActionError("Quantity exceeds available stock.");
+      return;
+    }
+
+    if (!salePrice || salePrice <= 0) {
+      setActionError("Enter the actual selling price.");
+      return;
+    }
+
+    if (Math.abs(paymentTotal - saleTotal) > 0.01) {
+      setActionError("Payment amounts must equal the sale total.");
+      return;
+    }
+
+    const payments =
+      saleForm.paymentMethod === "Cash"
+        ? [
+          {
+            payment_method: "CASH",
+            amount: Number(saleForm.cashAmount),
+          },
+        ]
+        : saleForm.paymentMethod === "M-Pesa"
+          ? [
+            {
+              payment_method: "MPESA",
+              amount: Number(saleForm.mpesaAmount),
+            },
+          ]
+          : [
+            {
+              payment_method: "MPESA",
+              amount: Number(saleForm.mpesaAmount),
+            },
+            {
+              payment_method: "CASH",
+              amount: Number(saleForm.cashAmount),
+            },
+          ];
+
+    const payload = {
+      items: [
+        {
+          product_id: saleForm.product.id,
+          quantity: saleQuantity,
+          actual_selling_price: salePrice,
+        },
+      ],
+      payments,
+    };
+
+    setSavingSale(true);
+
+    try {
+      const response = await apiRequest("/sales", {
+        method: "POST",
+        body: payload,
+        token,
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || "Unable to record sale.");
+      }
+
+      closeSaleModal();
+      await loadSales();
+
+      setSuccessMessage(
+        response.message || "Sale recorded successfully."
+      );
+    } catch (error) {
+      setActionError(getErrorMessage(error));
+    } finally {
+      setSavingSale(false);
+    }
+  }
+
+  async function openRefund(sale) {
     setSelectedSale(sale);
 
     setRefundForm({
@@ -356,93 +406,144 @@ export default function EmployeeSalesPage() {
       mpesaAmount: "",
     });
 
+    setRefundedQuantities({});
+    setActionError("");
+    setSuccessMessage("");
     setShowRefundModal(true);
+
+    // Retrieve previous refunds so partial refunds cannot exceed
+    // the remaining refundable quantity.
+    try {
+      const response = await apiRequest(
+        `/refunds?original_sale_id=${encodeURIComponent(sale.id)}`,
+        {
+          method: "GET",
+          token,
+        }
+      );
+
+      const quantities = {};
+
+      (response.refunds || []).forEach((refund) => {
+        (refund.items || []).forEach((item) => {
+          quantities[item.sale_item_id] =
+            (quantities[item.sale_item_id] || 0) +
+            Number(item.quantity || 0);
+        });
+      });
+
+      setRefundedQuantities(quantities);
+    } catch (error) {
+      setActionError(
+        `Could not load previous refunds: ${getErrorMessage(error)}`
+      );
+    }
   }
 
-  function processRefund() {
-    if (!selectedSale) return;
+  function changeRefundPaymentMethod(method) {
+    setRefundForm((previous) => ({
+      ...previous,
+      paymentMethod: method,
+      cashAmount: "",
+      mpesaAmount: "",
+    }));
+  }
 
-    const item = selectedSale.items[0];
+  async function processRefund() {
+    if (!selectedSale || !selectedItem) return;
 
-    const quantity = Number(refundForm.quantity || 0);
+    setActionError("");
+    setSuccessMessage("");
 
-    if (quantity <= 0) {
-      alert("Enter a valid refund quantity.");
+    if (!refundQuantity || refundQuantity <= 0) {
+      setActionError("Enter a valid refund quantity.");
       return;
     }
 
-    if (quantity > item.quantity) {
-      alert("Refund quantity cannot exceed the original quantity.");
+    if (refundQuantity > remainingRefundableQuantity) {
+      setActionError(
+        `Only ${remainingRefundableQuantity} ${selectedItem.unit} remain refundable.`
+      );
       return;
     }
 
     if (!refundForm.reason.trim()) {
-      alert("Enter the refund reason.");
+      setActionError("Enter the refund reason.");
       return;
     }
 
-    const refundAmount =
-      quantity * item.actualSellingPrice;
+    if (Math.abs(refundPaymentTotal - refundAmount) > 0.01) {
+      setActionError(
+        "Refund payment amounts must equal the refund amount."
+      );
+      return;
+    }
 
-    const paymentTotal =
+    const paymentMethod =
       refundForm.paymentMethod === "Cash"
-        ? Number(refundForm.cashAmount || 0)
+        ? "CASH"
         : refundForm.paymentMethod === "M-Pesa"
-          ? Number(refundForm.mpesaAmount || 0)
-          : Number(refundForm.cashAmount || 0) +
-            Number(refundForm.mpesaAmount || 0);
+          ? "MPESA"
+          : "SPLIT";
 
-    if (Math.abs(paymentTotal - refundAmount) > 0.01) {
-      alert("Refund payment amounts must equal refund amount.");
-      return;
+    const payload = {
+      original_sale_id: selectedSale.id,
+      reason: refundForm.reason.trim(),
+      payment_method: paymentMethod,
+      items: [
+        {
+          sale_item_id: selectedItem.id,
+          quantity: refundQuantity,
+          stock_destination: refundForm.stockDestination,
+        },
+      ],
+    };
+
+    setProcessingRefund(true);
+
+    try {
+      const response = await apiRequest("/refunds", {
+        method: "POST",
+        body: payload,
+        token,
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || "Unable to process refund.");
+      }
+
+      closeRefundModal();
+      await loadSales();
+
+      setSuccessMessage(
+        response.message || "Refund processed successfully."
+      );
+    } catch (error) {
+      setActionError(getErrorMessage(error));
+    } finally {
+      setProcessingRefund(false);
     }
-
-    setSales((prev) =>
-      prev.map((sale) => {
-        if (sale.id !== selectedSale.id) {
-          return sale;
-        }
-
-        const remainingQuantity =
-          item.quantity - quantity;
-
-        const newTotal =
-          sale.totalAmount - refundAmount;
-
-        const reversedCost =
-          quantity * item.costPrice;
-
-        const newCost =
-          sale.totalCost - reversedCost;
-
-        return {
-          ...sale,
-          totalAmount: newTotal,
-          totalCost: newCost,
-          grossProfit: newTotal - newCost,
-          status:
-            remainingQuantity === 0
-              ? "REFUNDED"
-              : sale.status,
-          items:
-            remainingQuantity === 0
-              ? []
-              : [
-                  {
-                    ...item,
-                    quantity: remainingQuantity,
-                    total:
-                      remainingQuantity *
-                      item.actualSellingPrice,
-                  },
-                ],
-        };
-      })
-    );
-
-    setShowRefundModal(false);
-    setSelectedSale(null);
   }
+
+  function salePaymentLabel(sale) {
+    const methods = [...new Set(
+      (sale.payments || []).map((payment) => payment.method)
+    )];
+
+    return methods
+      .map((method) =>
+        method === "MPESA" ? "M-Pesa" : method
+      )
+      .join(" + ") || "Not available";
+  }
+
+  const branchName =
+    sales.find((sale) => sale.branchName)?.branchName ||
+    "Your assigned branch";
+
+  const totalSalesValue = sales
+    .filter((sale) => sale.status === "COMPLETED")
+    .reduce((sum, sale) => sum + sale.totalAmount, 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -475,11 +576,11 @@ export default function EmployeeSalesPage() {
               </p>
 
               <p className="font-semibold">
-                {CURRENT_EMPLOYEE.name}
+                Employee account
               </p>
 
               <p className="text-sm text-gray-500">
-                Branch: {CURRENT_EMPLOYEE.branch}
+                Branch: {branchName}
               </p>
             </div>
           </div>
@@ -487,45 +588,50 @@ export default function EmployeeSalesPage() {
       </div>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+        {pageError && (
+          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {pageError}
+            <button
+              onClick={loadSales}
+              className="ml-3 font-semibold underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="mb-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+            {successMessage}
+          </div>
+        )}
+
+        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
           <SummaryCard
-            title="My Sales"
-            value={employeeSales.length}
+            title="Branch Sales"
+            value={loadingSales ? "Loading..." : sales.length}
           />
 
           <SummaryCard
-            title="Sales Value"
-            value={money(
-              employeeSales.reduce(
-                (sum, sale) =>
-                  sum + sale.totalAmount,
-                0
-              )
-            )}
-          />
-
-          <SummaryCard
-            title="Gross Profit"
-            value={money(
-              employeeSales.reduce(
-                (sum, sale) =>
-                  sum + sale.grossProfit,
-                0
-              )
-            )}
+            title="Completed Sales Value"
+            value={loadingSales ? "Loading..." : money(totalSalesValue)}
           />
         </div>
 
         <div className="mb-5 flex flex-col gap-4 sm:flex-row">
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search invoice or product..."
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search sale ID or product..."
             className="flex-1 rounded-xl border bg-white px-4 py-3"
           />
 
           <button
-            onClick={() => setShowSaleModal(true)}
+            onClick={() => {
+              setActionError("");
+              setSuccessMessage("");
+              setShowSaleModal(true);
+            }}
             className="rounded-xl px-5 py-3 font-semibold text-white"
             style={{ backgroundColor: BRAND.orange }}
           >
@@ -538,89 +644,95 @@ export default function EmployeeSalesPage() {
             <table className="min-w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-5 py-4 text-left">
-                    Invoice
-                  </th>
-
-                  <th className="px-5 py-4 text-left">
-                    Product
-                  </th>
-
-                  <th className="px-5 py-4 text-left">
-                    Quantity
-                  </th>
-
-                  <th className="px-5 py-4 text-left">
-                    Total
-                  </th>
-
-                  <th className="px-5 py-4 text-left">
-                    Profit
-                  </th>
-
-                  <th className="px-5 py-4 text-left">
-                    Status
-                  </th>
-
-                  <th className="px-5 py-4 text-right">
-                    Action
-                  </th>
+                  <th className="px-5 py-4 text-left">Sale ID</th>
+                  <th className="px-5 py-4 text-left">Product</th>
+                  <th className="px-5 py-4 text-left">Quantity</th>
+                  <th className="px-5 py-4 text-left">Total</th>
+                  <th className="px-5 py-4 text-left">Payment</th>
+                  <th className="px-5 py-4 text-left">Status</th>
+                  <th className="px-5 py-4 text-right">Action</th>
                 </tr>
               </thead>
 
               <tbody>
-                {visibleSales.map((sale) => {
-                  const item = sale.items[0];
-
-                  return (
-                    <tr
-                      key={sale.id}
-                      className="border-t"
+                {loadingSales ? (
+                  <tr>
+                    <td
+                      colSpan="7"
+                      className="px-5 py-10 text-center text-gray-500"
                     >
-                      <td className="px-5 py-4 font-semibold">
-                        {sale.invoiceNumber}
-                      </td>
+                      Loading sales...
+                    </td>
+                  </tr>
+                ) : visibleSales.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan="7"
+                      className="px-5 py-10 text-center text-gray-500"
+                    >
+                      No sales found.
+                    </td>
+                  </tr>
+                ) : (
+                  visibleSales.map((sale) => {
+                    const productNames = sale.items
+                      .map((item) => item.productName)
+                      .join(", ");
 
-                      <td className="px-5 py-4">
-                        {item?.productName || "Refunded"}
-                      </td>
+                    const totalQuantity = sale.items.reduce(
+                      (sum, item) => sum + item.quantity,
+                      0
+                    );
 
-                      <td className="px-5 py-4">
-                        {item
-                          ? `${item.quantity} ${item.unit}`
-                          : "-"}
-                      </td>
+                    const units = [
+                      ...new Set(sale.items.map((item) => item.unit)),
+                    ].join(", ");
 
-                      <td className="px-5 py-4">
-                        {money(sale.totalAmount)}
-                      </td>
+                    return (
+                      <tr key={sale.id} className="border-t">
+                        <td className="px-5 py-4">
+                          <p className="font-semibold">{sale.id}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {sale.employeeName}
+                          </p>
+                        </td>
 
-                      <td className="px-5 py-4">
-                        {money(sale.grossProfit)}
-                      </td>
+                        <td className="px-5 py-4">
+                          <p className="font-medium">
+                            {productNames || "No item details"}
+                          </p>
+                        </td>
 
-                      <td className="px-5 py-4">
-                        <StatusBadge
-                          status={sale.status}
-                        />
-                      </td>
+                        <td className="px-5 py-4">
+                          {totalQuantity} {units}
+                        </td>
 
-                      <td className="px-5 py-4 text-right">
-                        {sale.status !== "REFUNDED" &&
-                          sale.status !== "VOIDED" && (
+                        <td className="px-5 py-4 font-semibold">
+                          {money(sale.totalAmount)}
+                        </td>
+
+                        <td className="px-5 py-4 text-sm">
+                          {salePaymentLabel(sale)}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <StatusBadge status={sale.status} />
+                        </td>
+
+                        <td className="px-5 py-4 text-right">
+                          {sale.status === "COMPLETED" && (
                             <button
-                              onClick={() =>
-                                openRefund(sale)
-                              }
-                              className="rounded-lg border px-3 py-2 text-sm"
+                              onClick={() => openRefund(sale)}
+                              className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
                             >
                               Refund
                             </button>
                           )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -630,49 +742,41 @@ export default function EmployeeSalesPage() {
       {showSaleModal && (
         <Modal
           title="Record Sale"
-          onClose={() => {
-            resetSaleForm();
-            setShowSaleModal(false);
-          }}
+          onClose={closeSaleModal}
           footer={
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => {
-                  resetSaleForm();
-                  setShowSaleModal(false);
-                }}
-                className="rounded-xl border px-5 py-3 font-semibold"
+                onClick={closeSaleModal}
+                disabled={savingSale}
+                className="rounded-xl border px-5 py-3 font-semibold disabled:opacity-50"
               >
                 Cancel
               </button>
 
               <button
                 onClick={recordSale}
-                className="rounded-xl px-5 py-3 font-semibold text-white"
-                style={{
-                  backgroundColor: BRAND.orange,
-                }}
+                disabled={savingSale}
+                className="rounded-xl px-5 py-3 font-semibold text-white disabled:opacity-50"
+                style={{ backgroundColor: BRAND.orange }}
               >
-                Record Sale
+                {savingSale ? "Recording..." : "Record Sale"}
               </button>
             </div>
           }
         >
           <div className="space-y-5">
             <div className="rounded-xl bg-blue-50 p-4">
-              <p className="text-sm text-gray-500">
-                Sale Branch
-              </p>
+              <p className="text-sm text-gray-500">Sale Branch</p>
 
               <p
                 className="text-lg font-bold"
                 style={{ color: BRAND.navy }}
               >
-                {CURRENT_EMPLOYEE.branch}
+                {branchName}
               </p>
 
               <p className="mt-1 text-xs text-gray-500">
-                Your branch is assigned by your account.
+                Your branch is assigned by your employee account.
               </p>
             </div>
 
@@ -683,48 +787,73 @@ export default function EmployeeSalesPage() {
 
               <input
                 value={saleForm.productSearch}
-                onChange={(e) =>
-                  setSaleForm((prev) => ({
-                    ...prev,
-                    productSearch: e.target.value,
+                onChange={(event) => {
+                  setSaleForm((previous) => ({
+                    ...previous,
+                    productSearch: event.target.value,
                     product: null,
-                  }))
-                }
+                  }));
+                  setActionError("");
+                }}
                 placeholder="Search by product name, SKU or category..."
                 className="w-full rounded-xl border px-4 py-3"
               />
 
-              {filteredProducts.length > 0 && (
-                <div className="mt-2 overflow-hidden rounded-xl border">
-                  {filteredProducts.map((product) => (
+              {searchingProducts && (
+                <p className="mt-2 text-sm text-gray-500">
+                  Searching products...
+                </p>
+              )}
+
+              {productResults.length > 0 && (
+                <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border">
+                  {productResults.map((product) => (
                     <button
                       key={product.id}
-                      onClick={() =>
-                        selectProduct(product)
-                      }
+                      type="button"
+                      onClick={() => selectProduct(product)}
                       className="block w-full border-b p-4 text-left last:border-b-0 hover:bg-gray-50"
                     >
-                      <p className="font-semibold">
-                        {product.name}
-                      </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">
+                            {product.name}
+                          </p>
 
-                      <p className="text-sm text-gray-500">
-                        {product.sku} ·{" "}
-                        {product.category}
-                      </p>
+                          <p className="text-sm text-gray-500">
+                            {product.sku} · {product.category}
+                          </p>
+                        </div>
+
+                        <div className="text-right">
+                          <p className="text-sm font-semibold">
+                            {product.stock} {product.unit}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Available
+                          </p>
+                        </div>
+                      </div>
                     </button>
                   ))}
                 </div>
               )}
+
+              {!searchingProducts &&
+                saleForm.productSearch.trim() &&
+                !saleForm.product &&
+                productResults.length === 0 && (
+                  <p className="mt-2 text-sm text-gray-500">
+                    No matching products found.
+                  </p>
+                )}
             </div>
 
             {saleForm.product && (
               <div className="rounded-xl border bg-gray-50 p-5">
                 <h3
                   className="mb-4 font-bold"
-                  style={{
-                    color: BRAND.navy,
-                  }}
+                  style={{ color: BRAND.navy }}
                 >
                   Product Information
                 </h3>
@@ -752,9 +881,7 @@ export default function EmployeeSalesPage() {
 
                   <Info
                     label="Cost Price"
-                    value={money(
-                      saleForm.product.costPrice
-                    )}
+                    value={money(saleForm.product.costPrice)}
                   />
                 </div>
 
@@ -764,8 +891,7 @@ export default function EmployeeSalesPage() {
                   </p>
 
                   <p className="font-bold">
-                    {saleForm.product.stock}{" "}
-                    {saleForm.product.unit}
+                    {saleForm.product.stock} {saleForm.product.unit}
                   </p>
                 </div>
               </div>
@@ -773,17 +899,14 @@ export default function EmployeeSalesPage() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Input
-                label={`Quantity${
-                  saleForm.product
-                    ? ` (${saleForm.product.unit})`
-                    : ""
-                }`}
+                label={`Quantity${saleForm.product ? ` (${saleForm.product.unit})` : ""
+                  }`}
                 type="number"
                 step="0.001"
                 value={saleForm.quantity}
                 onChange={(value) =>
-                  setSaleForm((prev) => ({
-                    ...prev,
+                  setSaleForm((previous) => ({
+                    ...previous,
                     quantity: value,
                   }))
                 }
@@ -791,13 +914,13 @@ export default function EmployeeSalesPage() {
               />
 
               <Input
-                label="Actual Selling Price"
+                label="Actual Selling Price (per unit)"
                 type="number"
                 step="0.01"
                 value={saleForm.actualSellingPrice}
                 onChange={(value) =>
-                  setSaleForm((prev) => ({
-                    ...prev,
+                  setSaleForm((previous) => ({
+                    ...previous,
                     actualSellingPrice: value,
                   }))
                 }
@@ -806,22 +929,14 @@ export default function EmployeeSalesPage() {
             </div>
 
             <div className="rounded-xl border p-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Info
-                  label="Sale Total"
-                  value={money(saleTotal)}
-                />
+              <Info
+                label="Sale Total"
+                value={money(saleTotal)}
+              />
 
-                <Info
-                  label="COGS"
-                  value={money(saleCost)}
-                />
-
-                <Info
-                  label="Gross Profit"
-                  value={money(saleGrossProfit)}
-                />
-              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Total amount payable for this sale.
+              </p>
             </div>
 
             <div>
@@ -830,27 +945,18 @@ export default function EmployeeSalesPage() {
               </label>
 
               <div className="grid grid-cols-3 gap-2">
-                {[
-                  "Cash",
-                  "M-Pesa",
-                  "Split Payment",
-                ].map((method) => (
+                {["Cash", "M-Pesa", "Split Payment"].map((method) => (
                   <button
                     key={method}
-                    onClick={() =>
-                      changePaymentMethod(method)
-                    }
-                    className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-                      saleForm.paymentMethod === method
+                    type="button"
+                    onClick={() => changePaymentMethod(method)}
+                    className={`rounded-xl border px-3 py-3 text-sm font-semibold ${saleForm.paymentMethod === method
                         ? "text-white"
                         : ""
-                    }`}
+                      }`}
                     style={
                       saleForm.paymentMethod === method
-                        ? {
-                            backgroundColor:
-                              BRAND.navy,
-                          }
+                        ? { backgroundColor: BRAND.navy }
                         : {}
                     }
                   >
@@ -867,8 +973,8 @@ export default function EmployeeSalesPage() {
                 step="0.01"
                 value={saleForm.cashAmount}
                 onChange={(value) =>
-                  setSaleForm((prev) => ({
-                    ...prev,
+                  setSaleForm((previous) => ({
+                    ...previous,
                     cashAmount: value,
                   }))
                 }
@@ -882,16 +988,15 @@ export default function EmployeeSalesPage() {
                 step="0.01"
                 value={saleForm.mpesaAmount}
                 onChange={(value) =>
-                  setSaleForm((prev) => ({
-                    ...prev,
+                  setSaleForm((previous) => ({
+                    ...previous,
                     mpesaAmount: value,
                   }))
                 }
               />
             )}
 
-            {saleForm.paymentMethod ===
-              "Split Payment" && (
+            {saleForm.paymentMethod === "Split Payment" && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Input
                   label="M-Pesa Amount"
@@ -899,8 +1004,8 @@ export default function EmployeeSalesPage() {
                   step="0.01"
                   value={saleForm.mpesaAmount}
                   onChange={(value) =>
-                    setSaleForm((prev) => ({
-                      ...prev,
+                    setSaleForm((previous) => ({
+                      ...previous,
                       mpesaAmount: value,
                     }))
                   }
@@ -912,8 +1017,8 @@ export default function EmployeeSalesPage() {
                   step="0.01"
                   value={saleForm.cashAmount}
                   onChange={(value) =>
-                    setSaleForm((prev) => ({
-                      ...prev,
+                    setSaleForm((previous) => ({
+                      ...previous,
                       cashAmount: value,
                     }))
                   }
@@ -925,108 +1030,110 @@ export default function EmployeeSalesPage() {
               paymentTotal={paymentTotal}
               saleTotal={saleTotal}
             />
+
+            {actionError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {actionError}
+              </div>
+            )}
           </div>
         </Modal>
       )}
 
       {showRefundModal && selectedSale && (
         <Modal
-          title={`Refund — ${selectedSale.invoiceNumber}`}
-          onClose={() => setShowRefundModal(false)}
+          title={`Refund — ${selectedSale.id}`}
+          onClose={closeRefundModal}
           footer={
             <div className="flex justify-end gap-3">
               <button
-                onClick={() =>
-                  setShowRefundModal(false)
-                }
-                className="rounded-xl border px-5 py-3"
+                onClick={closeRefundModal}
+                disabled={processingRefund}
+                className="rounded-xl border px-5 py-3 disabled:opacity-50"
               >
                 Cancel
               </button>
 
               <button
                 onClick={processRefund}
-                className="rounded-xl bg-red-600 px-5 py-3 font-semibold text-white"
+                disabled={processingRefund || !selectedItem}
+                className="rounded-xl bg-red-600 px-5 py-3 font-semibold text-white disabled:opacity-50"
               >
-                Process Refund
+                {processingRefund ? "Processing..." : "Process Refund"}
               </button>
             </div>
           }
         >
-          {selectedSale.items.length > 0 && (
+          {selectedItem ? (
             <div className="space-y-5">
-              {selectedSale.items.map((item) => {
-                const quantity = Number(
-                  refundForm.quantity || 0
-                );
+              <div className="rounded-xl bg-gray-50 p-4">
+                <p className="font-bold">
+                  {selectedItem.productName}
+                </p>
 
-                const refundAmount =
-                  quantity *
-                  item.actualSellingPrice;
+                <p className="text-sm text-gray-500">
+                  {selectedItem.sku} · {selectedItem.unit}
+                </p>
 
-                return (
-                  <div key={item.productId}>
-                    <div className="rounded-xl bg-gray-50 p-4">
-                      <p className="font-bold">
-                        {item.productName}
-                      </p>
+                <p className="mt-2 text-sm">
+                  Original quantity:{" "}
+                  <strong>
+                    {selectedItem.quantity} {selectedItem.unit}
+                  </strong>
+                </p>
 
-                      <p className="text-sm text-gray-500">
-                        {item.sku} · {item.unit}
-                      </p>
+                <p className="text-sm">
+                  Previously refunded:{" "}
+                  <strong>
+                    {selectedItemRefunded} {selectedItem.unit}
+                  </strong>
+                </p>
 
-                      <p className="mt-2 text-sm">
-                        Original quantity:{" "}
-                        <strong>
-                          {item.quantity}{" "}
-                          {item.unit}
-                        </strong>
-                      </p>
+                <p className="text-sm">
+                  Remaining refundable:{" "}
+                  <strong>
+                    {remainingRefundableQuantity} {selectedItem.unit}
+                  </strong>
+                </p>
 
-                      <p className="text-sm">
-                        Actual selling price:{" "}
-                        <strong>
-                          {money(
-                            item.actualSellingPrice
-                          )}
-                        </strong>
-                      </p>
-                    </div>
+                <p className="mt-2 text-sm">
+                  Actual selling price:{" "}
+                  <strong>
+                    {money(selectedItem.actualSellingPrice)}
+                  </strong>
+                </p>
+              </div>
 
-                    <div className="mt-4">
-                      <Input
-                        label={`Return Quantity (${item.unit})`}
-                        type="number"
-                        step="0.001"
-                        value={refundForm.quantity}
-                        onChange={(value) =>
-                          setRefundForm((prev) => ({
-                            ...prev,
-                            quantity: value,
-                          }))
-                        }
-                      />
-                    </div>
+              <Input
+                label={`Return Quantity (${selectedItem.unit})`}
+                type="number"
+                step="0.001"
+                value={refundForm.quantity}
+                onChange={(value) =>
+                  setRefundForm((previous) => ({
+                    ...previous,
+                    quantity: value,
+                  }))
+                }
+                placeholder="Enter quantity to return"
+              />
 
-                    <div className="mt-4 rounded-xl border p-4">
-                      <p className="text-sm text-gray-500">
-                        Refund Amount
-                      </p>
+              <div className="rounded-xl border p-4">
+                <p className="text-sm text-gray-500">
+                  Refund Amount
+                </p>
 
-                      <p className="text-2xl font-bold text-red-600">
-                        {money(refundAmount)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+                <p className="text-2xl font-bold text-red-600">
+                  {money(refundAmount)}
+                </p>
+              </div>
 
               <Input
                 label="Refund Reason"
                 value={refundForm.reason}
                 onChange={(value) =>
-                  setRefundForm((prev) => ({
-                    ...prev,
+                  setRefundForm((previous) => ({
+                    ...previous,
                     reason: value,
                   }))
                 }
@@ -1040,19 +1147,15 @@ export default function EmployeeSalesPage() {
 
                 <select
                   value={refundForm.stockDestination}
-                  onChange={(e) =>
-                    setRefundForm((prev) => ({
-                      ...prev,
-                      stockDestination:
-                        e.target.value,
+                  onChange={(event) =>
+                    setRefundForm((previous) => ({
+                      ...previous,
+                      stockDestination: event.target.value,
                     }))
                   }
                   className="w-full rounded-xl border px-4 py-3"
                 >
-                  <option value="SELLABLE">
-                    Sellable Stock
-                  </option>
-
+                  <option value="SELLABLE">Sellable Stock</option>
                   <option value="DAMAGED">
                     Damaged / Defective Stock
                   </option>
@@ -1065,34 +1168,18 @@ export default function EmployeeSalesPage() {
                 </label>
 
                 <div className="grid grid-cols-3 gap-2">
-                  {[
-                    "Cash",
-                    "M-Pesa",
-                    "Split Payment",
-                  ].map((method) => (
+                  {["Cash", "M-Pesa", "Split Payment"].map((method) => (
                     <button
                       key={method}
-                      onClick={() =>
-                        setRefundForm((prev) => ({
-                          ...prev,
-                          paymentMethod: method,
-                          cashAmount: "",
-                          mpesaAmount: "",
-                        }))
-                      }
-                      className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-                        refundForm.paymentMethod ===
-                        method
+                      type="button"
+                      onClick={() => changeRefundPaymentMethod(method)}
+                      className={`rounded-xl border px-3 py-3 text-sm font-semibold ${refundForm.paymentMethod === method
                           ? "text-white"
                           : ""
-                      }`}
+                        }`}
                       style={
-                        refundForm.paymentMethod ===
-                        method
-                          ? {
-                              backgroundColor:
-                                BRAND.navy,
-                            }
+                        refundForm.paymentMethod === method
+                          ? { backgroundColor: BRAND.navy }
                           : {}
                       }
                     >
@@ -1102,40 +1189,37 @@ export default function EmployeeSalesPage() {
                 </div>
               </div>
 
-              {refundForm.paymentMethod ===
-                "Cash" && (
+              {refundForm.paymentMethod === "Cash" && (
                 <Input
                   label="Cash Refund"
                   type="number"
                   step="0.01"
                   value={refundForm.cashAmount}
                   onChange={(value) =>
-                    setRefundForm((prev) => ({
-                      ...prev,
+                    setRefundForm((previous) => ({
+                      ...previous,
                       cashAmount: value,
                     }))
                   }
                 />
               )}
 
-              {refundForm.paymentMethod ===
-                "M-Pesa" && (
+              {refundForm.paymentMethod === "M-Pesa" && (
                 <Input
                   label="M-Pesa Refund"
                   type="number"
                   step="0.01"
                   value={refundForm.mpesaAmount}
                   onChange={(value) =>
-                    setRefundForm((prev) => ({
-                      ...prev,
+                    setRefundForm((previous) => ({
+                      ...previous,
                       mpesaAmount: value,
                     }))
                   }
                 />
               )}
 
-              {refundForm.paymentMethod ===
-                "Split Payment" && (
+              {refundForm.paymentMethod === "Split Payment" && (
                 <div className="grid grid-cols-2 gap-4">
                   <Input
                     label="M-Pesa Refund"
@@ -1143,8 +1227,8 @@ export default function EmployeeSalesPage() {
                     step="0.01"
                     value={refundForm.mpesaAmount}
                     onChange={(value) =>
-                      setRefundForm((prev) => ({
-                        ...prev,
+                      setRefundForm((previous) => ({
+                        ...previous,
                         mpesaAmount: value,
                       }))
                     }
@@ -1156,14 +1240,35 @@ export default function EmployeeSalesPage() {
                     step="0.01"
                     value={refundForm.cashAmount}
                     onChange={(value) =>
-                      setRefundForm((prev) => ({
-                        ...prev,
+                      setRefundForm((previous) => ({
+                        ...previous,
                         cashAmount: value,
                       }))
                     }
                   />
                 </div>
               )}
+
+              <PaymentValidation
+                paymentTotal={refundPaymentTotal}
+                saleTotal={refundAmount}
+              />
+
+              <p className="text-xs text-gray-500">
+                The current refund API records the total refund and
+                payment method, but does not save the individual cash
+                and M-Pesa refund amounts.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              This sale has no refundable item details.
+            </p>
+          )}
+
+          {actionError && (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {actionError}
             </div>
           )}
         </Modal>
@@ -1193,10 +1298,8 @@ function StatusBadge({ status }) {
 
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-        classes[status] ||
-        "bg-gray-100 text-gray-600"
-      }`}
+      className={`rounded-full px-3 py-1 text-xs font-semibold ${classes[status] || "bg-gray-100 text-gray-600"
+        }`}
     >
       {status}
     </span>
@@ -1209,7 +1312,7 @@ function Info({ label, value }) {
       <p className="text-xs text-gray-500">{label}</p>
 
       <p className="mt-1 text-sm font-semibold text-gray-900">
-        {value}
+        {value ?? "—"}
       </p>
     </div>
   );
@@ -1234,63 +1337,45 @@ function Input({
         step={step}
         value={value}
         placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         className="w-full rounded-xl border px-4 py-3 outline-none focus:ring-2"
       />
     </div>
   );
 }
 
-function PaymentValidation({
-  paymentTotal,
-  saleTotal,
-}) {
-  const difference =
-    paymentTotal - saleTotal;
-
-  const balanced =
-    Math.abs(difference) <= 0.01;
+function PaymentValidation({ paymentTotal, saleTotal }) {
+  const difference = paymentTotal - saleTotal;
+  const balanced = Math.abs(difference) <= 0.01;
 
   return (
     <div
-      className={`rounded-xl p-4 ${
-        balanced
-          ? "bg-green-50"
-          : "bg-red-50"
-      }`}
+      className={`rounded-xl p-4 ${balanced ? "bg-green-50" : "bg-red-50"
+        }`}
     >
       <div className="flex justify-between">
         <span className="text-sm text-gray-600">
           Payment Total
         </span>
 
-        <strong>
-          {money(paymentTotal)}
-        </strong>
+        <strong>{money(paymentTotal)}</strong>
       </div>
 
       <div className="mt-1 flex justify-between">
         <span className="text-sm text-gray-600">
-          Sale Total
+          Expected Total
         </span>
 
-        <strong>
-          {money(saleTotal)}
-        </strong>
+        <strong>{money(saleTotal)}</strong>
       </div>
 
       <p
-        className={`mt-2 text-sm font-semibold ${
-          balanced
-            ? "text-green-700"
-            : "text-red-700"
-        }`}
+        className={`mt-2 text-sm font-semibold ${balanced ? "text-green-700" : "text-red-700"
+          }`}
       >
         {balanced
           ? "Payment is balanced."
-          : `Difference: ${money(
-              Math.abs(difference)
-            )}`}
+          : `Difference: ${money(Math.abs(difference))}`}
       </p>
     </div>
   );
